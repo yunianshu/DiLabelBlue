@@ -49,6 +49,8 @@ public class BlePrinterConnection {
     private BluetoothGattCharacteristic notifyChar;
     private int mtu = 20;
     private int state = STATE_DISCONNECTED;
+    private BluetoothDevice pendingDevice;
+    private int retriesLeft = 2;   // status=133 自动重试次数（业界标准做法）
 
     private final Queue<byte[]> sendQueue = new ArrayDeque<>();
     private boolean writing = false;
@@ -64,8 +66,14 @@ public class BlePrinterConnection {
     public void setProfile(VendorDB.Profile p) { this.profile = p; }
 
     public void connect(BluetoothDevice device) {
+        pendingDevice = device;
+        retriesLeft = 2;
         log("连接: " + device.getName() + " [" + device.getAddress() + "]");
         setState(STATE_CONNECTING);
+        connectGatt(device);
+    }
+
+    private void connectGatt(BluetoothDevice device) {
         if (Build.VERSION.SDK_INT >= 23) {
             gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE);
         } else {
@@ -92,6 +100,23 @@ public class BlePrinterConnection {
                 g.discoverServices();          // 必须等这个回调后才能读写
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 log("GATT 断开 status=" + status);
+                // 133 = GATT_ERROR：弱信号/资源紧张时高发，标准做法是关旧句柄后自动重试
+                if (status == 133 && retriesLeft > 0 && pendingDevice != null) {
+                    retriesLeft--;
+                    try { g.close(); } catch (Exception ignore) { }
+                    gatt = null;
+                    writing = false;
+                    synchronized (sendQueue) { sendQueue.clear(); }
+                    log("status=133, 自动重试(剩余 " + (retriesLeft + 1) + " 次)...");
+                    setState(STATE_CONNECTING);
+                    new android.os.Handler(android.os.Looper.getMainLooper())
+                            .postDelayed(new Runnable() {
+                                @Override public void run() {
+                                    if (pendingDevice != null) connectGatt(pendingDevice);
+                                }
+                            }, 400);
+                    return;   // 不落回未连接态，保持连接中
+                }
                 setState(STATE_DISCONNECTED);
             }
         }

@@ -105,19 +105,33 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         connection = new BlePrinterConnection(this, this);
         spp = new ClassicSppConnection(this, new ClassicSppConnection.Listener() {
             @Override
-            public void onLog(String msg) { log(msg); }
-
-            @Override
-            public void onConnected(boolean ok) {
-                st = ok ? BlePrinterConnection.STATE_READY
-                        : BlePrinterConnection.STATE_DISCONNECTED;
-                setPill(ok ? "SPP 已连接 · 可打印" : "未连接",
-                        ok ? C_GREEN : C_FAINT, ok ? C_GREEN : C_FAINT);
-                refreshButtons();
+            public void onLog(String msg) {
+                main.post(new Runnable() {   // SPP 回调来自工作线程，必须切回主线程更新 UI
+                    @Override public void run() { log(msg); }
+                });
             }
 
             @Override
-            public void onData(byte[] data) { log("[SPP] 收到 " + data.length + " 字节"); }
+            public void onConnected(final boolean ok) {
+                main.post(new Runnable() {
+                    @Override public void run() {
+                        st = ok ? BlePrinterConnection.STATE_READY
+                                : BlePrinterConnection.STATE_DISCONNECTED;
+                        setPill(ok ? "SPP 已连接 · 可打印" : "未连接",
+                                ok ? C_GREEN : C_FAINT, ok ? C_GREEN : C_FAINT);
+                        refreshButtons();
+                    }
+                });
+            }
+
+            @Override
+            public void onData(final byte[] data) {
+                main.post(new Runnable() {
+                    @Override public void run() {
+                        log("[SPP] 收到 " + data.length + " 字节");
+                    }
+                });
+            }
         });
         usb = new UsbPrinterConnection(this, new UsbPrinterConnection.Listener() {
             @Override

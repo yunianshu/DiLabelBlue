@@ -38,6 +38,9 @@
 
 ### 修复
 
+- `MainActivity.java`：SPP 通道回调线程直接更新 UI 导致崩溃
+  （CalledFromWrongThreadException，通道功能真机验证时暴露）
+- `BlePrinterConnection.java`：GATT status=133（弱信号）自动重试 2 次
 - `AndroidManifest.xml`：`BLUETOOTH_SCAN` 加 `neverForLocation`——修复 Android 12 上
   无定位权限时扫描结果被系统静默过滤（真机 0 台设备 → 3 台）
 - `BleScanner.java`：实现 `onScanFailed` 错误回调（此前扫描失败黑盒）；
