@@ -8,7 +8,10 @@
     <!-- 经典蓝牙 + BLE，兼容 Android 12 前后两套权限模型 -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- neverForLocation：扫描结果不用于定位。Android 12 上若无此标志，系统会要求
+         同时授予 ACCESS_FINE_LOCATION 才派发扫描结果，否则结果被静默过滤（真机踩坑） -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
@@ -19,7 +22,7 @@
 
     <application
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.Material.Light.DarkActionBar"
+        android:theme="@android:style/Theme.Material.NoActionBar"
         android:allowBackup="false">
         <activity
             android:name=".MainActivity"

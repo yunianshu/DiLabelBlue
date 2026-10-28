@@ -29,6 +29,8 @@ public class BleScanner {
     public interface Callback {
         void onDeviceFound(PrinterDevice device);
         void onScanFinished();
+        /** startScan 失败（权限/注册问题等），错误码见 ScanCallback.SCAN_FAILED_* */
+        void onScanFailed(int errorCode);
     }
 
     /** 扫描结果设备（含识别出的厂商） */
@@ -89,10 +91,11 @@ public class BleScanner {
             context.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN);
         }
         scanning = true;
-        // 不加 ScanFilter：前缀无法过滤，回调里分类
+        // 不加 ScanFilter：前缀无法过滤，回调里分类。
+        // LOW_LATENCY：扫描窗口只有几秒，用最高占空比尽快出结果
         adapter.getBluetoothLeScanner().startScan(null,
                 new android.bluetooth.le.ScanSettings.Builder()
-                        .setScanMode(android.bluetooth.le.ScanSettings.SCAN_MODE_BALANCED)
+                        .setScanMode(android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_LATENCY)
                         .build(),
                 scanCallback);
     }
@@ -111,14 +114,19 @@ public class BleScanner {
             BluetoothDevice d = result.getDevice();
             String name = d.getName();
             if (name == null || name.isEmpty()) return;   // 无名设备跳过
-            String key = d.getAddress();
-            if (found.containsKey(key)) return;
             VendorDB.Profile p = VendorDB.matchByName(name);
             // 过滤明显不是打印机的设备（手机/手表等常见名）
             if (p == null && !looksLikePrinter(name)) return;
             PrinterDevice pd = new PrinterDevice(d, result.getRssi(), p);
-            found.put(key, pd);
+            found.put(d.getAddress(), pd);   // 覆盖旧记录，刷新 RSSI（界面上信号条会跳动）
             if (callback != null) callback.onDeviceFound(pd);
+        }
+
+        @Override
+        public void onScanFailed(int errorCode) {
+            scanning = false;
+            if (callback != null) callback.onScanFailed(errorCode);
+            if (callback != null) callback.onScanFinished();
         }
     };
 

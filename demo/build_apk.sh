@@ -37,7 +37,8 @@ echo "[4/6] d8 转 dex"
     $(find build/classes -name '*.class')
 
 echo "[5/6] 合并 APK"
-python - <<'EOF'
+# python3：Git Bash 里裸 python 可能是损坏的解释器（找不到 encodings），python3/py 可用
+python3 - <<'EOF'
 import zipfile, shutil
 shutil.copy('build/base.apk', 'build/app-unsigned.apk')
 with zipfile.ZipFile('build/app-unsigned.apk', 'a') as z:

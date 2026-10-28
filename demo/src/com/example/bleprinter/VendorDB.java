@@ -141,13 +141,17 @@ public final class VendorDB {
                 new String[]{CHR_FE1, CHR_GPRINTER_NOTIFY, CHR_FFF1, CHR_NUS_NOTIFY, CHR_USP_NOTIFY}));
     }
 
-    /** 按蓝牙名称前缀匹配厂商（与 Dlabel printlist.list 同思路：contains/startsWith 前缀表） */
+    /**
+     * 按蓝牙名称前缀匹配厂商（与 Dlabel printlist.list 同思路：纯前缀表）。
+     * 不做 contains 模糊匹配——真机验证发现随机广播名（如 NZPIGki249...）
+     * 会因子串巧合误命中厂商（"gki" 含 "gk"→佳博），前缀匹配才不会误报。
+     */
     public static Profile matchByName(String deviceName) {
         if (deviceName == null) return null;
         String lower = deviceName.trim().toLowerCase();
         for (Profile p : PROFILES) {
             for (String prefix : p.namePrefixes) {
-                if (lower.startsWith(prefix) || lower.contains(prefix)) {
+                if (lower.startsWith(prefix)) {
                     return p;
                 }
             }

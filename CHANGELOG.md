@@ -11,6 +11,29 @@
 - 用真实打印机验证并补全 VendorDB 厂商 UUID 候选表（K2）
 - 补充分片写入流控参数与 Dlabel 精确一致（K3）
 
+## [1.2.0] - 2026-10-28
+
+### 新增
+
+- **UI 全面重设计**（暗色控制台风格，纯代码零依赖）：
+  扫描雷达动画（扇形扫掠+扩散波纹）、连接状态胶囊（呼吸灯/变色）、
+  设备卡片列表（厂商徽章+实时 RSSI 信号条）、协议芯片选择器、
+  2×2 渐变动作按钮（按压缩放+震动反馈）、彩色终端日志（自动滚动/清空）
+- `RadarView.java`、`SignalBarsView.java` 两个自绘动画控件
+- 真机（Pixel 3 / Android 12）全链路验证：扫描 → 前缀识别佳博 →
+  GATT 命中 ff00/ff02 → MTU 247 → 通知就绪 → 探测 → ESC/POS 测试标签 121 字节发送成功
+- 新增截图 `demo/demo_screenshot.png`（连接就绪态）、`demo/demo_screenshot_scan.png`（扫描态）
+
+### 修复
+
+- `AndroidManifest.xml`：`BLUETOOTH_SCAN` 加 `neverForLocation`——修复 Android 12 上
+  无定位权限时扫描结果被系统静默过滤（真机 0 台设备 → 3 台）
+- `BleScanner.java`：实现 `onScanFailed` 错误回调（此前扫描失败黑盒）；
+  RSSI 实时刷新；扫描模式改 `SCAN_MODE_LOW_LATENCY`
+- `VendorDB.java`：厂商匹配改纯前缀（去掉 contains），消除随机广播名误报
+- `MainActivity.java`：修复 buildUi 阶段 connection 未初始化的启动崩溃 NPE
+- `demo/build_apk.sh`：改用 `python3`（Git Bash 裸 python 损坏）
+
 ## [1.1.0] - 2026-10-28
 
 ### 新增
@@ -47,7 +70,8 @@
   含字符串池字典序、真实 class_defs 扫描等关键发现
 - 已构建并验证的 `demo/BlePrinterDemo.apk`（LDPlayer Android 9 启动、权限流程正常）
 
-[Unreleased]: https://github.com/yunianshu/DiLabelBlue/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/yunianshu/DiLabelBlue/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/yunianshu/DiLabelBlue/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yunianshu/DiLabelBlue/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/yunianshu/DiLabelBlue/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/yunianshu/DiLabelBlue/releases/tag/v1.0.0
