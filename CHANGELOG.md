@@ -7,6 +7,13 @@
 
 ### 新增
 
+- **通道选取功能**（依据 Dlabel APK 证据：BLE/SPP 双通道 + Manifest usb.host）：
+  界面新增 BLE GATT / 经典蓝牙 SPP / USB (OTG) 三通道芯片，扫描按钮与连接/发送
+  按通道自动路由；新增 `UsbPrinterConnection.java`（class 7 / bulk OUT 枚举、
+  USB 权限流程、bulkTransfer 流式发送）；SPP 通道真机验证（100 台已配对设备、
+  汉印机型徽章识别）、USB 通道枚举/空态验证
+- 截图 `demo/demo_screenshot_channels.png`
+
 - `各平台连接方式调研.md`：iOS/Android/Windows/macOS/Linux/Web/微信小程序/鸿蒙/
   云打印各平台的打印机连接方式、API 入口、限制与厂商多平台 SDK 一览
 

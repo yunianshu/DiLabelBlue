@@ -9,10 +9,12 @@ import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.hardware.usb.UsbDevice;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -20,7 +22,6 @@ import android.os.Looper;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
-import android.content.res.ColorStateList;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -39,14 +40,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 多厂家蓝牙打印机连接测试 Demo 主界面（暗色控制台风格，纯代码构建，零第三方依赖）。
+ * 多厂家打印机连接测试 Demo 主界面（暗色控制台风格，纯代码构建，零第三方依赖）。
  *
- * 复刻 Dlabel 云标签的连接流程：
- *   雷达搜索(BLE 无过滤扫描) -> 名称前缀识别厂商 -> GATT 连接(厂商 UUID 表 + 自动降级)
- *   -> 指令适配测试(探测打印机协议族) -> 分协议族发送测试标签
+ * 通道模型对齐 Dlabel APK（见 分析报告 §2.2/§2.3）：
+ *   - BLE GATT（默认，无过滤扫描 + 前缀识别 + UUID 候选表/自动降级）
+ *   - 经典蓝牙 SPP（Dlabel「切换蓝牙模式」，FeasyCom SDK 同时导出 FscBleCentralApiImp/FscSppApiImp）
+ *   - USB OTG（Dlabel Manifest 声明 android.hardware.usb.host）
+ * 复刻流程：搜索 -> 名称前缀识别厂商 -> 连接 -> 指令适配测试 -> 分协议族发送测试标签
  */
 public class MainActivity extends Activity implements BleScanner.Callback,
         BlePrinterConnection.Listener {
+
+    // ---- 连接通道（对齐 Dlabel：BLE / 经典蓝牙 SPP / USB） ----
+    private static final int CH_BLE = 0;
+    private static final int CH_SPP = 1;
+    private static final int CH_USB = 2;
 
     // ---- 配色（暗色控制台主题） ----
     private static final int C_BG_TOP = 0xFF0B1220;
@@ -68,6 +76,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private BleScanner scanner;
     private BlePrinterConnection connection;
     private ClassicSppConnection spp;
+    private UsbPrinterConnection usb;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private DeviceAdapter listAdapter;
@@ -75,12 +84,15 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private TextView statusText;
     private View statusDot;
     private GradientDrawable statusPillBg;
-    private TextView scanBtn, bondedBtn, countText, logText, emptyHint;
+    private TextView scanBtn, countText, logText, emptyHint;
+    private TextView chBle, chSpp, chUsb;
     private TextView chipAuto, chipEsc, chipTspl, chipCpcl;
     private TextView connBtn, testBtn, printBtn, discBtn;
     private ScrollView consoleScroll;
+    private int channel = CH_BLE;
     private int protocolIndex = 0;
-    private BleScanner.PrinterDevice selected;
+    private int st = BlePrinterConnection.STATE_DISCONNECTED;   // 三通道统一状态
+    private DeviceItem selected;
     private ValueAnimator dotPulse;
 
     @Override
@@ -97,15 +109,41 @@ public class MainActivity extends Activity implements BleScanner.Callback,
 
             @Override
             public void onConnected(boolean ok) {
-                log(ok ? "[SPP] 已连接" : "[SPP] 连接失败");
+                st = ok ? BlePrinterConnection.STATE_READY
+                        : BlePrinterConnection.STATE_DISCONNECTED;
+                setPill(ok ? "SPP 已连接 · 可打印" : "未连接",
+                        ok ? C_GREEN : C_FAINT, ok ? C_GREEN : C_FAINT);
+                refreshButtons();
             }
 
             @Override
             public void onData(byte[] data) { log("[SPP] 收到 " + data.length + " 字节"); }
         });
+        usb = new UsbPrinterConnection(this, new UsbPrinterConnection.Listener() {
+            @Override
+            public void onLog(String msg) { log(msg); }
+
+            @Override
+            public void onState(int s) {
+                st = s;
+                if (s == BlePrinterConnection.STATE_READY) {
+                    setPill("USB 已连接 · 可打印", C_GREEN, C_GREEN);
+                } else if (s == BlePrinterConnection.STATE_DISCONNECTED) {
+                    setPill("未连接", C_FAINT, C_FAINT);
+                }
+                refreshButtons();
+            }
+        });
+        usb.register();
         requestBtPermissions();
         refreshButtons();   // connection 就绪后刷新按钮初始禁用态
         appendLog("-- DiLabel 多厂家连接控制台就绪, 点雷达或扫描键开始 --");
+    }
+
+    @Override
+    protected void onDestroy() {
+        usb.unregister();
+        super.onDestroy();
     }
 
     // ---------- UI（纯代码构建，零第三方依赖） ----------
@@ -122,10 +160,10 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         // ===== 头部：雷达动画 =====
         radar = new RadarView(this);
         radar.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { toggleScan(); }
+            @Override public void onClick(View v) { scanAction(); }
         });
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(164));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(150));
         root.addView(radar, rlp);
 
         // 状态胶囊
@@ -155,33 +193,48 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         plp.topMargin = dp(2);
         root.addView(pill, plp);
 
-        // 扫描主按钮 + SPP 次按钮
-        scanBtn = bigBtn("⌖  开始扫描周围打印机",
-                new int[]{C_ACCENT, C_INDIGO}, 0xFF071018, 0);
+        // ===== 通道选取（对齐 Dlabel：BLE / 经典蓝牙 SPP / USB） =====
+        LinearLayout chRow = new LinearLayout(this);
+        chRow.setOrientation(LinearLayout.HORIZONTAL);
+        chRow.setGravity(Gravity.CENTER);
+        chBle = chip("BLE GATT");
+        chSpp = chip("经典蓝牙 SPP");
+        chUsb = chip("USB (OTG)");
+        TextView[] cs = {chBle, chSpp, chUsb};
+        for (int i = 0; i < cs.length; i++) {
+            final int idx = i;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
+            cs[i].setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    switchChannel(idx);
+                    buzz(v);
+                }
+            });
+            chRow.addView(cs[i], lp);
+        }
+        styleChannel();
+        LinearLayout.LayoutParams cplp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cplp.topMargin = dp(8);
+        root.addView(chRow, cplp);
+
+        // 扫描主按钮（随通道切换语义）
+        scanBtn = bigBtn("", new int[]{C_ACCENT, C_INDIGO}, 0xFF071018, 0);
         scanBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { toggleScan(); }
+            @Override public void onClick(View v) { scanAction(); }
         });
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
         slp.topMargin = dp(10);
         root.addView(scanBtn, slp);
 
-        bondedBtn = bigBtn("已配对设备 · 经典蓝牙 SPP 通道", null, C_SUB, 0xFF2A3C60);
-        bondedBtn.setTextSize(12);
-        bondedBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { listBonded(); }
-        });
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(32));
-        blp.topMargin = dp(6);
-        root.addView(bondedBtn, blp);
-
         // ===== 设备列表 =====
         LinearLayout listHead = new LinearLayout(this);
         listHead.setOrientation(LinearLayout.HORIZONTAL);
         listHead.setPadding(dp(2), dp(8), dp(2), dp(4));
-        TextView lh = sectionLabel("◈ 发现的打印机");
-        listHead.addView(lh);
+        listHead.addView(sectionLabel("◈ 发现的打印机"));
         countText = new TextView(this);
         countText.setText("0 台");
         countText.setTextColor(C_FAINT);
@@ -201,7 +254,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         emptyHint = new TextView(this);
-        emptyHint.setText("周围暂未发现打印机\n点击雷达开始搜索");
+        emptyHint.setText("");
         emptyHint.setTextColor(C_FAINT);
         emptyHint.setTextSize(13);
         emptyHint.setGravity(Gravity.CENTER);
@@ -253,13 +306,13 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         chipTspl = chip("TSPL");
         chipCpcl = chip("CPCL");
         styleChip(chipAuto, true);
-        TextView[] cs = {chipAuto, chipEsc, chipTspl, chipCpcl};
-        for (int i = 0; i < cs.length; i++) {
+        TextView[] pcs = {chipAuto, chipEsc, chipTspl, chipCpcl};
+        for (int i = 0; i < pcs.length; i++) {
             final int idx = i;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             lp.setMargins(dp(3), 0, dp(3), 0);
-            cs[i].setOnClickListener(new View.OnClickListener() {
+            pcs[i].setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     protocolIndex = idx;
                     styleChip(chipAuto, idx == 0);
@@ -269,9 +322,9 @@ public class MainActivity extends Activity implements BleScanner.Callback,
                     buzz(v);
                 }
             });
-            chips.addView(cs[i], lp);
+            chips.addView(pcs[i], lp);
         }
-        LinearLayout.LayoutParams cplp = new LinearLayout.LayoutParams(
+        cplp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         cplp.topMargin = dp(8);
         root.addView(chips, cplp);
@@ -303,14 +356,56 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             @Override public void onClick(View v) { doPrint(); }
         });
         discBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                connection.disconnect();
-                spp.disconnect();
-            }
+            @Override public void onClick(View v) { disconnectAll(); }
         });
 
         setContentView(root);
+        switchChannel(CH_BLE);
+    }
+
+    // ---- 通道切换 ----
+
+    private void switchChannel(int ch) {
+        disconnectAll();
+        channel = ch;
+        selected = null;
+        styleChannel();
+        listAdapter.replaceAll(new ArrayList<DeviceItem>());
+        scanBtn.setText(scanLabel());
+        emptyHint.setText(hintText());
+        listAdapter.refreshMeta();
+        appendLog("-- 切换到 " + channelName() + " 通道 --");
         refreshButtons();
+    }
+
+    private String channelName() {
+        switch (channel) {
+            case CH_SPP: return "经典蓝牙 SPP";
+            case CH_USB: return "USB (OTG)";
+            default: return "BLE GATT";
+        }
+    }
+
+    private String scanLabel() {
+        switch (channel) {
+            case CH_SPP: return "☰  列出已配对设备 (SPP)";
+            case CH_USB: return "⛶  枚举 USB 打印机 (OTG)";
+            default: return "⌖  开始扫描周围打印机";
+        }
+    }
+
+    private String hintText() {
+        switch (channel) {
+            case CH_SPP: return "尚未列出已配对设备\n点击上方按钮列出（需先在系统设置配对）";
+            case CH_USB: return "未检测到 USB 打印机\n请用 OTG 线连接后重新枚举";
+            default: return "周围暂未发现打印机\n点击雷达开始搜索";
+        }
+    }
+
+    private void styleChannel() {
+        styleChip(chBle, channel == CH_BLE);
+        styleChip(chSpp, channel == CH_SPP);
+        styleChip(chUsb, channel == CH_USB);
     }
 
     // ---- 控件工厂 ----
@@ -459,13 +554,22 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         }
     }
 
-    private void toggleScan() {
+    /** 扫描/列出动作：随通道切换语义 */
+    private void scanAction() {
         BluetoothAdapter ad = btAdapter();
-        if (ad == null || !ad.isEnabled()) {
+        if (channel != CH_USB && (ad == null || !ad.isEnabled())) {
             toast("蓝牙未开启, 请求打开...");
             startActivityForResult(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), 2);
             return;
         }
+        switch (channel) {
+            case CH_SPP: listBonded(); break;
+            case CH_USB: listUsb(); break;
+            default: toggleBleScan(); break;
+        }
+    }
+
+    private void toggleBleScan() {
         if (scanner.isScanning()) {
             scanner.stop();
         } else {
@@ -479,16 +583,34 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         }
     }
 
+    /** SPP 通道：列出已配对设备（对应 Dlabel「切换蓝牙模式」） */
     private void listBonded() {
         BluetoothAdapter ad = btAdapter();
         if (ad == null) return;
         Set<BluetoothDevice> set = ad.getBondedDevices();
-        appendLog("-- 已配对 " + set.size() + " 台 --");
+        List<DeviceItem> items = new ArrayList<>();
         for (BluetoothDevice d : set) {
-            VendorDB.Profile p = VendorDB.matchByName(d.getName());
-            appendLog(d.getName() + " | " + d.getAddress()
-                    + (p == null ? "" : " -> " + p.brand + "/" + p.protocol));
+            items.add(DeviceItem.spp(d, VendorDB.matchByName(d.getName())));
         }
+        listAdapter.replaceAll(items);
+        appendLog("-- 已配对 " + items.size() + " 台 (SPP 通道) --");
+    }
+
+    /** USB 通道：枚举 USB 设备（对应 Dlabel Manifest 的 usb.host） */
+    private void listUsb() {
+        List<UsbDevice> printers = usb.listPrinters();
+        List<DeviceItem> items = new ArrayList<>();
+        for (UsbDevice d : printers) {
+            items.add(DeviceItem.usbDev(d, usb.hasPermission(d)));
+        }
+        listAdapter.replaceAll(items);
+        appendLog("-- USB 设备 " + items.size() + " 台 --");
+    }
+
+    private void disconnectAll() {
+        if (connection != null) connection.disconnect();   // buildUi 阶段可能尚未创建
+        if (spp != null) spp.disconnect();
+        if (usb != null) usb.disconnect();
     }
 
     private void doConnect() {
@@ -496,23 +618,38 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             toast("请先在列表中选择设备");
             return;
         }
-        if (selected.profile != null) connection.setProfile(selected.profile);
-        connection.connect(selected.device);
+        switch (channel) {
+            case CH_SPP:
+                st = BlePrinterConnection.STATE_CONNECTING;
+                setPill("SPP 连接中...", C_AMBER, C_AMBER);
+                spp.connect(selected.bt);
+                break;
+            case CH_USB:
+                st = BlePrinterConnection.STATE_CONNECTING;
+                setPill("USB 连接中...", C_AMBER, C_AMBER);
+                usb.connect(selected.usbDev);
+                break;
+            default:
+                if (selected.profile != null) connection.setProfile(selected.profile);
+                connection.connect(selected.bt);
+                break;
+        }
+        refreshButtons();
     }
 
     /** 对应 Dlabel "打印机适配测试"：发探测指令看是否有回包，判断通道与协议族 */
     private void doAdaptTest() {
-        if (connection.getState() != BlePrinterConnection.STATE_READY) {
+        if (st != BlePrinterConnection.STATE_READY) {
             toast("请先连接(通道就绪后测试)");
             return;
         }
         appendLog("-- 适配测试: 发送状态探测指令 --");
-        connection.sendData(LabelProtocols.probeCommand());
+        sendBytes(LabelProtocols.probeCommand());
         toast("探测指令已发送, 观察日志回包");
     }
 
     private void doPrint() {
-        if (connection.getState() != BlePrinterConnection.STATE_READY) {
+        if (st != BlePrinterConnection.STATE_READY) {
             toast("请先连接");
             return;
         }
@@ -540,7 +677,16 @@ public class MainActivity extends Activity implements BleScanner.Callback,
                 break;
         }
         appendLog("-- 发送 " + proto + " 指令 " + data.length + " 字节 --");
-        connection.sendData(data);
+        sendBytes(data);
+    }
+
+    /** 按当前通道路由发送（BLE 走分片流控；SPP/USB 是流式整段写） */
+    private void sendBytes(byte[] data) {
+        switch (channel) {
+            case CH_SPP: spp.sendData(data); break;
+            case CH_USB: usb.sendData(data); break;
+            default: connection.sendData(data); break;
+        }
     }
 
     private byte[] buildAuto(VendorDB.Protocol p, String title, String body) {
@@ -571,7 +717,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         main.post(new Runnable() {
             @Override public void run() {
                 radar.setScanning(false);
-                scanBtn.setText("⌖  开始扫描周围打印机");
+                scanBtn.setText(scanLabel());
                 appendLog("-- 扫描结束, 共 " + listAdapter.getCount() + " 台 --");
                 refreshButtons();
             }
@@ -613,21 +759,20 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     public void onState(final int state) {
         main.post(new Runnable() {
             @Override public void run() {
+                st = state;
                 String s;
-                int dotColor, strokeColor;
+                int color;
                 switch (state) {
                     case BlePrinterConnection.STATE_CONNECTING:
-                        s = "连接中..."; dotColor = C_AMBER; strokeColor = C_AMBER; startPulse(); break;
+                        s = "连接中..."; color = C_AMBER; startPulse(); break;
                     case BlePrinterConnection.STATE_CONNECTED:
-                        s = "已连接 · 发现服务中"; dotColor = C_BLUE; strokeColor = C_BLUE; stopPulse(); break;
+                        s = "已连接 · 发现服务中"; color = C_BLUE; stopPulse(); break;
                     case BlePrinterConnection.STATE_READY:
-                        s = "就绪 · 可打印"; dotColor = C_GREEN; strokeColor = C_GREEN; stopPulse(); break;
+                        s = "就绪 · 可打印"; color = C_GREEN; stopPulse(); break;
                     default:
-                        s = "未连接"; dotColor = C_FAINT; strokeColor = C_FAINT; stopPulse(); break;
+                        s = "未连接"; color = C_FAINT; stopPulse(); break;
                 }
-                statusText.setText("  " + s);
-                statusDot.getBackground().setTint(dotColor);
-                statusPillBg.setStroke(dp(1), strokeColor);
+                setPill(s, color, color);
                 refreshButtons();
             }
         });
@@ -642,14 +787,22 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         }
     }
 
+    // ---------- 状态与日志 ----------
+
+    private void setPill(String s, int dotColor, int strokeColor) {
+        statusText.setText("  " + s);
+        statusDot.getBackground().setTint(dotColor);
+        statusPillBg.setStroke(dp(1), strokeColor);
+    }
+
     private void startPulse() {
         if (dotPulse != null && dotPulse.isRunning()) return;
         dotPulse = ValueAnimator.ofFloat(1f, 0.25f);
         dotPulse.setDuration(500);
         dotPulse.setRepeatCount(ValueAnimator.INFINITE);
         dotPulse.setRepeatMode(ValueAnimator.REVERSE);
-        dotPulse.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
-            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+        dotPulse.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator a) {
                 statusDot.setAlpha((Float) a.getAnimatedValue());
             }
         });
@@ -664,7 +817,6 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private void refreshButtons() {
         if (connection == null) return;   // buildUi 阶段连接器尚未创建
         boolean hasSel = selected != null;
-        int st = connection.getState();
         en(connBtn, hasSel && st != BlePrinterConnection.STATE_CONNECTING);
         en(testBtn, st == BlePrinterConnection.STATE_READY);
         en(printBtn, st == BlePrinterConnection.STATE_READY);
@@ -686,7 +838,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
                 || s.contains("false") || s.contains("断开")) color = C_RED;
         else if (s.contains("就绪") || s.contains("命中") || s.contains("已连接")) color = C_GREEN;
         else if (s.startsWith("发现:") || s.startsWith("选中:") || s.startsWith("--")) color = C_AMBER;
-        else if (s.startsWith("[BLE") || s.startsWith("[SPP")) color = 0xFF7DD3FC;
+        else if (s.startsWith("[BLE") || s.startsWith("[SPP") || s.startsWith("[USB"))
+            color = 0xFF7DD3FC;
         SpannableStringBuilder ssb = new SpannableStringBuilder(s + "\n");
         ssb.setSpan(new ForegroundColorSpan(color), 0, ssb.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -700,26 +853,85 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 
-    /** 设备卡片列表适配器 */
-    private class DeviceAdapter extends BaseAdapter {
-        private final List<BleScanner.PrinterDevice> items = new ArrayList<>();
+    // ---------- 设备条目（三通道统一模型） ----------
 
-        /** 按地址去重插入/刷新 RSSI；已识别厂商的置顶。返回 true 表示新设备 */
+    /** 列表条目：一个条目可能是 BLE / SPP / USB 设备（静态嵌套类，可放静态工厂） */
+    private static class DeviceItem {
+        final int channel;
+        final String name;
+        final String sub;
+        final VendorDB.Profile profile;
+        final int rssi;              // 仅 BLE 有效
+        final BluetoothDevice bt;    // BLE/SPP 用
+        final UsbDevice usbDev;      // USB 用
+        final boolean usbGranted;    // USB 权限状态
+
+        DeviceItem(int ch, String name, String sub, VendorDB.Profile p, int rssi,
+                   BluetoothDevice bt, UsbDevice ud, boolean granted) {
+            this.channel = ch;
+            this.name = name;
+            this.sub = sub;
+            this.profile = p;
+            this.rssi = rssi;
+            this.bt = bt;
+            this.usbDev = ud;
+            this.usbGranted = granted;
+        }
+
+        static DeviceItem ble(BleScanner.PrinterDevice d) {
+            return new DeviceItem(CH_BLE, d.displayName(),
+                    d.device.getAddress() + " · " + d.rssi + " dBm",
+                    d.profile, d.rssi, d.device, null, false);
+        }
+
+        static DeviceItem spp(BluetoothDevice d, VendorDB.Profile p) {
+            String n = (d.getName() == null || d.getName().isEmpty())
+                    ? d.getAddress() : d.getName();
+            return new DeviceItem(CH_SPP, n, d.getAddress() + " · 已配对", p, 0,
+                    d, null, false);
+        }
+
+        static DeviceItem usbDev(UsbDevice d, boolean granted) {
+            return new DeviceItem(CH_USB,
+                    "USB 设备 " + String.format("%04X:%04X", d.getVendorId(), d.getProductId()),
+                    String.format("vid=0x%04X pid=0x%04X · %s",
+                            d.getVendorId(), d.getProductId(),
+                            granted ? "已授权" : "未授权"),
+                    VendorDB.matchByName(d.getDeviceName()), 0,
+                    null, d, granted);
+        }
+    }
+
+    /** 设备卡片列表适配器（三通道统一） */
+    private class DeviceAdapter extends BaseAdapter {
+        private final List<DeviceItem> items = new ArrayList<>();
+
+        /** BLE 扫描按地址去重插入/刷新 RSSI；已识别厂商的置顶。返回 true 表示新设备 */
         boolean upsert(BleScanner.PrinterDevice d) {
             String key = d.device.getAddress();
             for (int i = 0; i < items.size(); i++) {
-                if (items.get(i).device.getAddress().equals(key)) {
-                    items.set(i, d);
+                if (items.get(i).bt != null
+                        && key.equals(items.get(i).bt.getAddress())) {
+                    items.set(i, DeviceItem.ble(d));
                     notifyDataSetChanged();
                     refreshMeta();
                     return false;
                 }
             }
-            if (d.profile != null && items.size() > 0) items.add(0, d);
-            else items.add(d);
+            DeviceItem item = DeviceItem.ble(d);
+            if (d.profile != null && items.size() > 0) items.add(0, item);
+            else items.add(item);
             notifyDataSetChanged();
             refreshMeta();
             return true;
+        }
+
+        /** SPP/USB 通道整体重建列表 */
+        void replaceAll(List<DeviceItem> list) {
+            items.clear();
+            items.addAll(list);
+            notifyDataSetChanged();
+            refreshMeta();
         }
 
         private void refreshMeta() {
@@ -728,8 +940,62 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         }
 
         @Override public int getCount() { return items.size(); }
-        @Override public BleScanner.PrinterDevice getItem(int position) { return items.get(position); }
+        @Override public DeviceItem getItem(int position) { return items.get(position); }
         @Override public long getItemId(int position) { return position; }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            LinearLayout card = (convertView instanceof LinearLayout)
+                    ? (LinearLayout) convertView : buildCard();
+            CardHolder h = (CardHolder) card.getTag();
+
+            DeviceItem d = items.get(position);
+            h.name.setText(d.name);
+            h.sub.setText(d.sub);
+
+            int brandColor = brandColor(d.profile == null ? null : d.profile.brand);
+            h.chip.setText(d.profile == null ? "未知厂商" : d.profile.brand);
+            GradientDrawable cg = new GradientDrawable();
+            cg.setCornerRadius(dp(999));
+            cg.setColor((brandColor & 0x00FFFFFF) | 0x26000000);
+            cg.setStroke(dp(1), (brandColor & 0x00FFFFFF) | 0x66000000);
+            h.chip.setTextColor(brandColor);
+            h.chip.setBackground(cg);
+
+            if (d.channel == CH_BLE) {
+                h.bars.setVisibility(View.VISIBLE);
+                h.bars.setRssi(d.rssi);
+            } else {
+                h.bars.setVisibility(View.GONE);
+            }
+            h.tag.setText(d.channel == CH_SPP ? "SPP" : d.channel == CH_USB ? "USB" : "BLE");
+            GradientDrawable tg = new GradientDrawable();
+            tg.setCornerRadius(dp(999));
+            tg.setStroke(dp(1), 0xFF2A3C60);
+            tg.setColor(0x1422D3EE);
+            h.tag.setTextColor(C_SUB);
+            h.tag.setBackground(tg);
+
+            boolean sel = selected == d;
+            GradientDrawable cardBg = new GradientDrawable();
+            cardBg.setCornerRadius(dp(14));
+            cardBg.setColor(sel ? C_CARD_SEL : C_CARD);
+            cardBg.setStroke(dp(1.2f), sel ? C_ACCENT : C_CARD_STROKE);
+            card.setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(0x22FFFFFF), cardBg, null));
+
+            card.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    selected = items.get(position);
+                    appendLog("选中: " + selected.name
+                            + (selected.profile == null ? " (未知厂商)"
+                            : " (" + selected.profile.brand + ")"));
+                    notifyDataSetChanged();
+                    refreshButtons();
+                }
+            });
+            return card;
+        }
 
         private LinearLayout buildCard() {
             LinearLayout card = new LinearLayout(MainActivity.this);
@@ -760,12 +1026,21 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             vChip.setPadding(dp(9), dp(3), dp(9), dp(3));
             card.addView(vChip);
 
+            TextView tag = new TextView(MainActivity.this);
+            tag.setTextSize(9.5f);
+            tag.setTypeface(Typeface.MONOSPACE);
+            tag.setPadding(dp(6), dp(3), dp(6), dp(3));
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tlp.leftMargin = dp(6);
+            card.addView(tag, tlp);
+
             SignalBarsView bars = new SignalBarsView(MainActivity.this);
             LinearLayout.LayoutParams barlp = new LinearLayout.LayoutParams(dp(21), dp(15));
             barlp.leftMargin = dp(9);
             card.addView(bars, barlp);
 
-            card.setTag(new CardHolder(name, sub, vChip, bars));
+            card.setTag(new CardHolder(name, sub, vChip, tag, bars));
 
             LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -777,52 +1052,11 @@ public class MainActivity extends Activity implements BleScanner.Callback,
 
         /** 卡片控件引用（避免 setTag(int,...) 要求资源 ID 的问题） */
         private class CardHolder {
-            final TextView name, sub, chip;
+            final TextView name, sub, chip, tag;
             final SignalBarsView bars;
-            CardHolder(TextView n, TextView s, TextView c, SignalBarsView b) {
-                name = n; sub = s; chip = c; bars = b;
+            CardHolder(TextView n, TextView s, TextView c, TextView t, SignalBarsView b) {
+                name = n; sub = s; chip = c; tag = t; bars = b;
             }
-        }
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            LinearLayout card = (convertView instanceof LinearLayout)
-                    ? (LinearLayout) convertView : buildCard();
-            CardHolder h = (CardHolder) card.getTag();
-
-            BleScanner.PrinterDevice d = items.get(position);
-            String key = d.device.getAddress();
-            h.name.setText(d.displayName());
-            h.sub.setText(d.device.getAddress() + " · " + d.rssi + " dBm");
-
-            int brandColor = brandColor(d.profile == null ? null : d.profile.brand);
-            h.chip.setText(d.profile == null ? "未知厂商" : d.profile.brand);
-            GradientDrawable cg = new GradientDrawable();
-            cg.setCornerRadius(dp(999));
-            cg.setColor((brandColor & 0x00FFFFFF) | 0x26000000);
-            cg.setStroke(dp(1), (brandColor & 0x00FFFFFF) | 0x66000000);
-            h.chip.setTextColor(brandColor);
-            h.chip.setBackground(cg);
-            h.bars.setRssi(d.rssi);
-
-            boolean sel = selected != null && key.equals(selected.device.getAddress());
-            GradientDrawable cardBg = new GradientDrawable();
-            cardBg.setCornerRadius(dp(14));
-            cardBg.setColor(sel ? C_CARD_SEL : C_CARD);
-            cardBg.setStroke(dp(1.2f), sel ? C_ACCENT : C_CARD_STROKE);
-            card.setBackground(new RippleDrawable(
-                    ColorStateList.valueOf(0x22FFFFFF), cardBg, null));
-
-            card.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    selected = items.get(position);
-                    appendLog("选中: " + selected.displayName()
-                            + (selected.profile == null ? " (未知厂商)"
-                            : " (" + selected.profile.brand + ")"));
-                    notifyDataSetChanged();
-                    refreshButtons();
-                }
-            });
-            return card;
         }
     }
 

@@ -6,6 +6,12 @@
 **已于真机全链路验证**（Pixel 3 / Android 12）：扫描发现佳博 GT1-7F32 → 前缀识别 →
 GATT 命中 ff00/ff02 → MTU 247 → 通知就绪 → 探测指令 → ESC/POS 测试标签发送成功。
 
+**通道选取**（对齐 Dlabel APK 的通道模型）：界面可选 **BLE GATT / 经典蓝牙 SPP / USB (OTG)**
+三条通道——依据：Dlabel「切换蓝牙模式」字符串 + FeasyCom SDK 同时导出 FscBleCentralApiImp/FscSppApiImp
++ Manifest 声明 android.hardware.usb.host。SPP 通道真机验证：列出 100 台已配对设备，
+HM-A300/HM-C220/HM-A320 等汉印机型前缀全部正确命中「汉印 HPRT」徽章。
+（BLE 连接流程不变，SPP/USB 为流式整段发送，无 MTU 分片。）
+
 | ![连接就绪](demo_screenshot.png) | ![扫描](demo_screenshot_scan.png) |
 |---|---|
 | 连接就绪（佳博命中 ff00/ff02） | 扫描识别（厂商徽章 + RSSI 信号条） |
@@ -42,6 +48,7 @@ cd demo
 | `BleScanner.java` | BLE 无过滤扫描 + 回调里前缀分类（ScanFilter 不支持前缀） |
 | `BlePrinterConnection.java` | GATT 连接 → 服务发现 → UUID 候选表命中/自动降级 → MTU 247 → CCCD 开通知 → 按写入回调分片流控 |
 | `ClassicSppConnection.java` | 经典蓝牙 SPP 双通道（台式机/切换模式） |
+| `UsbPrinterConnection.java` | USB (OTG) 通道：class 7 / bulk OUT 枚举 + 权限 + bulkTransfer |
 | `LabelProtocols.java` | ESC/POS、TSPL、CPCL 三族测试标签 + 探测指令 |
 | `RadarView.java` / `SignalBarsView.java` | 雷达扫描动画 / RSSI 信号条（自绘控件） |
 

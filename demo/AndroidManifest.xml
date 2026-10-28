@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- 对齐 Dlabel APK：Manifest 声明 android.hardware.usb.host，支持 USB 连接打印机 -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:label="@string/app_name"
