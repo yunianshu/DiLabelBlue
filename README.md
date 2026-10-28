@@ -12,6 +12,7 @@
 | [`demo/README.md`](demo/README.md) | Demo 的构建、使用说明与 BLE 工程踩坑要点 |
 | [分析报告](分析报告-Dlabel多厂家打印机连接技术.md) | APK 逆向分析全文：证据、机制、加固与脱壳尝试记录 |
 | [问题记录](问题记录.md) | 全流程踩坑与解决方案、遗留问题清单（K1-K3） |
+| [各平台连接方式调研](各平台连接方式调研.md) | iOS/Windows/Web/小程序/鸿蒙等各平台连接打印机的方式与坑 |
 | [CHANGELOG](CHANGELOG.md) | 版本更新日志 |
 | `scripts/` | 360 加固 dex 字节级补丁脚本（脱壳实验方法留档） |
 | `decompiled/`、`apk_extracted/`、`unpack_attempt/`、`tools/` | 本地逆向产物与工具（体积大，未入库，按报告流程可重新生成） |

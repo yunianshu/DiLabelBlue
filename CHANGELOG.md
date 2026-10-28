@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### 新增
+
+- `各平台连接方式调研.md`：iOS/Android/Windows/macOS/Linux/Web/微信小程序/鸿蒙/
+  云打印各平台的打印机连接方式、API 入口、限制与厂商多平台 SDK 一览
+
 ### 计划中
 
 - 真机（ARM）脱壳提取 Dlabel 业务源码，确认 printlist.list 的 type 精确语义（见问题记录 K1）
