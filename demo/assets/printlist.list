@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PrinterList>
+ <printer name="printer" type = "4"/>
+  <printer name="m320" type = "4"/>
+    <printer name="1324d" type = "4"/>
+           <printer name="qr380a" type = "4"/>
+           	     <printer name="3120tu" type = "4>
+           	      <printer name="zh" type = "4"/>
+           	      <printer name="bhs" type = "4"/>
+           	      <printer name="rf" type = "4"/>
+     <printer name="qr" type = "2"/>
+      <printer name="hm-a300" type = "3"/>
+       <printer name="d31" type = "4"/>
+        <printer name="d21" type = "3"/>
+         <printer name="mht-" type = "4"/>
+          <printer name="pd" type = "4"/>
+            <printer name="km-202bt" type = "4"/>
+
+  	       <printer name="k319" type = "5"/>
+  		 <printer name="k419" type = "5"/>
+  		   <printer name="k219" type = "5"/>
+</PrinterList>

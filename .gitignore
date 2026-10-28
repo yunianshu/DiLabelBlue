@@ -1,0 +1,15 @@
+# 逆向分析产物（体积大，可按报告流程重新生成）
+/decompiled/
+/apk_extracted/
+/unpack_attempt/
+/tools/
+
+# 构建与签名
+demo/build/
+*.apk.idsig
+debug.keystore
+*.keystore
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
