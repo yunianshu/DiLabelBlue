@@ -45,6 +45,10 @@
 
 ### 修复
 
+- **找不到 HPRT T200**：扫描白名单与汉印前缀表补 `hprt`/`t200`（此前被名称
+  过滤误杀）；汉印候选表补 ff00/ff02/ff01（T200 实际数据通道）；
+  降级枚举跳过 SIG 标准特征（2A00 Device Name 标了可写导致指令写错通道）、
+  优先 WRITE_NO_RESPONSE；写入类型随特征属性
 - `MainActivity.java`：SPP 通道回调线程直接更新 UI 导致崩溃
   （CalledFromWrongThreadException，通道功能真机验证时暴露）
 - `BlePrinterConnection.java`：GATT status=133（弱信号）自动重试 2 次

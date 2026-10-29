@@ -137,6 +137,6 @@ public class BleScanner {
                 || lower.startsWith("d") || lower.startsWith("k") || lower.startsWith("qr")
                 || lower.contains("label") || lower.contains("pos") || lower.startsWith("hm")
                 || lower.startsWith("b21") || lower.startsWith("b1") || lower.startsWith("d11")
-                || lower.startsWith("d21") || lower.startsWith("d31");
+                || lower.startsWith("d21") || lower.startsWith("d31") || lower.startsWith("hprt");
     }
 }

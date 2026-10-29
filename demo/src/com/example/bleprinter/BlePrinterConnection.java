@@ -207,20 +207,30 @@ public class BlePrinterConnection {
             }
         }
         // ---- 自动降级: 枚举全部服务 ----
+        // 真机踩坑（HPRT T200）：标准 GATT 特征 2A00(Device Name) 标了可写，
+        // 先枚举到它会导致指令写进设备名通道；必须跳过 SIG 标准特征(0x2A00~0x2AFF)，
+        // 且优先 WRITE_NO_RESPONSE（打印数据通道的典型形态）
         if (writeChar == null) {
             log("降级: 自动枚举特征");
-            for (BluetoothGattService s : g.getServices()) {
-                for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
+            BluetoothGattCharacteristic wrNoRsp = null, wrRsp = null;
+            for (BluetoothGattService svc : g.getServices()) {
+                for (BluetoothGattCharacteristic c : svc.getCharacteristics()) {
                     int p = c.getProperties();
-                    if (writeChar == null && (p & (BluetoothGattCharacteristic.PROPERTY_WRITE
-                            | BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0) {
-                        writeChar = c;
-                    }
-                    if (notifyChar == null && (p & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) {
-                        notifyChar = c;
+                    boolean sig = isSigCharacteristic(c.getUuid());
+                    if (!sig) {
+                        if (wrNoRsp == null && (p & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+                            wrNoRsp = c;
+                        }
+                        if (wrRsp == null && (p & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
+                            wrRsp = c;
+                        }
+                        if (notifyChar == null && (p & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) {
+                            notifyChar = c;
+                        }
                     }
                 }
             }
+            writeChar = wrNoRsp != null ? wrNoRsp : wrRsp;
             if (writeChar != null) log("自动选择写特征: " + writeChar.getUuid());
         }
         if (notifyChar == null) {
@@ -232,6 +242,18 @@ public class BlePrinterConnection {
                     }
                 }
             }
+        }
+    }
+
+    /** 蓝牙 SIG 标准特征（0x2A00~0x2AFF，如 Device Name/Appearance）：GATT 定义数据，不是打印通道 */
+    private static boolean isSigCharacteristic(UUID u) {
+        String str = u.toString().toLowerCase();
+        if (!str.endsWith("-0000-1000-8000-00805f9b34fb")) return false;
+        try {
+            int shortId = Integer.parseInt(str.substring(4, 8), 16);
+            return shortId >= 0x2a00 && shortId <= 0x2aff;
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 
@@ -274,7 +296,10 @@ public class BlePrinterConnection {
         if (part == null) return;
         writing = true;
         writeChar.setValue(part);
-        writeChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+        writeChar.setWriteType((writeChar.getProperties()
+                & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+                ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         if (!gatt.writeCharacteristic(writeChar)) {
             writing = false;
             log("writeCharacteristic 返回 false");

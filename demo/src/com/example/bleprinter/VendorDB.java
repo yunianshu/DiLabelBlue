@@ -105,10 +105,10 @@ public final class VendorDB {
 
         // 汉印 HPRT：便携款多走 ffe0 或自定义 128bit 服务
         PROFILES.add(new Profile("汉印 HPRT", Protocol.ESC_POS,
-                new String[]{"hm-", "hm ", "a300", "m320", "n41", "n31", "jcp", "d31", "d21", "d11"},
-                new String[]{SVC_FE0, SVC_HPRT, SVC_FF02},
-                new String[]{CHR_FE1, CHR_HPRT_WRITE, CHR_FF02_WRITE},
-                new String[]{CHR_FE1, CHR_HPRT_NOTIFY, CHR_FF01_NOTIFY}));
+                new String[]{"hm-", "hm ", "hprt", "t200", "a300", "m320", "n41", "n31", "jcp", "d31", "d21", "d11"},
+                new String[]{SVC_FE0, SVC_HPRT, SVC_GPRINTER, SVC_FF02},
+                new String[]{CHR_FE1, CHR_HPRT_WRITE, CHR_GPRINTER_WRITE, CHR_FF02_WRITE},
+                new String[]{CHR_FE1, CHR_HPRT_NOTIFY, CHR_GPRINTER_NOTIFY, CHR_FF01_NOTIFY}));
 
         // 芯烨 Xprinter / 白牌热敏
         PROFILES.add(new Profile("芯烨 Xprinter", Protocol.ESC_POS,
