@@ -33,6 +33,10 @@
 
 ### 计划中
 
+- 逆向 HPRT 新一代（cmd_ver 3）打印协议以支持 T20/T260/New 1 系机型：
+  图片→LZO 压缩→加密→专有分包（REA 逆向结论见问题记录 #22：
+  公开 APK 无协议实现，需官方标签 SDK 或 HCI 抓包）
+
 - 真机（ARM）脱壳提取 Dlabel 业务源码，确认 printlist.list 的 type 精确语义（见问题记录 K1）
 - 用真实打印机验证并补全 VendorDB 厂商 UUID 候选表（K2）
 - 补充分片写入流控参数与 Dlabel 精确一致（K3）
