@@ -11,10 +11,16 @@ import android.view.View;
 public class SignalBarsView extends View {
 
     private int level = 1;   // 1..4
+    private int emptyColor = 0xFF2A3A58;   // 未点亮格颜色（随主题切换）
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public SignalBarsView(Context c) {
         super(c);
+    }
+
+    public void setEmptyColor(int color) {
+        emptyColor = color;
+        invalidate();
     }
 
     public void setRssi(int rssi) {
@@ -38,7 +44,7 @@ public class SignalBarsView extends View {
         for (int i = 0; i < 4; i++) {
             float h = maxH * (i + 1) / 4f;
             float x = i * (w + gap);
-            p.setColor(i < level ? color : 0xFF2A3A58);
+            p.setColor(i < level ? color : emptyColor);
             canvas.drawRoundRect(x, maxH - h, x + w, maxH, dp(1.4f), dp(1.4f), p);
         }
     }

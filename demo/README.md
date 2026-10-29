@@ -6,6 +6,12 @@
 **已于真机全链路验证**（Pixel 3 / Android 12）：扫描发现佳博 GT1-7F32 → 前缀识别 →
 GATT 命中 ff00/ff02 → MTU 247 → 通知就绪 → 探测指令 → ESC/POS 测试标签发送成功。
 
+**App 名称与图标**：启动名「DiLabel 控制台」，图标为雷达+打印机图形
+（`scripts/make_icon.py` 用 PIL 生成，改配色后重跑即可再生成）。
+
+**主题切换**：雷达右上角 ☀/☾ 按钮在深色控制台 / 浅色两种主题间切换，
+日志与设备列表保留，选择持久化保存。
+
 **通道选取**（对齐 Dlabel APK 的通道模型）：界面可选 **BLE GATT / 经典蓝牙 SPP / USB (OTG)**
 三条通道——依据：Dlabel「切换蓝牙模式」字符串 + FeasyCom SDK 同时导出 FscBleCentralApiImp/FscSppApiImp
 + Manifest 声明 android.hardware.usb.host。SPP 通道真机验证：列出 100 台已配对设备，

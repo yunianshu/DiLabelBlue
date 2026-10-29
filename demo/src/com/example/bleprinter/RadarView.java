@@ -20,8 +20,8 @@ import android.view.animation.LinearInterpolator;
  */
 public class RadarView extends View {
 
-    private static final int ACCENT = 0xFF22D3EE;   // 青
-    private static final int ACCENT_GLOW = 0x3322D3EE;
+    private int accent = 0xFF22D3EE;        // 主色（随主题切换）
+    private int idleBody = 0xFF3B5170;      // 静止时机身色
 
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -35,6 +35,18 @@ public class RadarView extends View {
     private float sweepAngle;
     private float pingT;
     private boolean scanning;
+
+    /** 主题切换入口：accent 主色 + 静止机身色 */
+    public void setColors(int accent, int idleBody) {
+        this.accent = accent;
+        this.idleBody = idleBody;
+        invalidate();
+    }
+
+    /** 主色 + alpha 合成 */
+    private int tint(int alpha) {
+        return (alpha << 24) | (accent & 0x00FFFFFF);
+    }
 
     public RadarView(Context c) {
         super(c);
@@ -100,24 +112,24 @@ public class RadarView extends View {
 
         // 径向微光背景
         fillPaint.setShader(new RadialGradient(cx, cy, maxR,
-                new int[]{0x1822D3EE, 0x08122345, 0x00000000},
+                new int[]{tint(0x18), tint(0x08), 0x00000000},
                 new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
         canvas.drawCircle(cx, cy, maxR, fillPaint);
         fillPaint.setShader(null);
 
         // 同心圆 + 十字线
-        ringPaint.setColor(0x2322D3EE);
+        ringPaint.setColor(tint(0x23));
         for (int i = 1; i <= 3; i++) {
             canvas.drawCircle(cx, cy, maxR * i / 3f, ringPaint);
         }
-        linePaint.setColor(0x1A22D3EE);
+        linePaint.setColor(tint(0x1A));
         canvas.drawLine(cx - maxR, cy, cx + maxR, cy, linePaint);
         canvas.drawLine(cx, cy - maxR, cx, cy + maxR, linePaint);
 
         // 扫描中：旋转扇形扫掠 + 扩散波纹
         if (scanning) {
             sweepPaint.setShader(new SweepGradient(cx, cy,
-                    new int[]{0x0022D3EE, 0x0022D3EE, ACCENT_GLOW, 0xB422D3EE}, null));
+                    new int[]{tint(0x00), tint(0x00), tint(0x33), tint(0xB4)}, null));
             canvas.save();
             canvas.rotate(sweepAngle, cx, cy);
             canvas.drawCircle(cx, cy, maxR, sweepPaint);
@@ -125,7 +137,7 @@ public class RadarView extends View {
 
             for (int k = 0; k < 2; k++) {   // 双波纹错相
                 float t = (pingT + k * 0.5f) % 1f;
-                ringPaint.setColor(Color.argb((int) (0x66 * (1 - t)), 0x22, 0xD3, 0xEE));
+                ringPaint.setColor(tint((int) (0x66 * (1 - t))));
                 canvas.drawCircle(cx, cy, maxR * t, ringPaint);
             }
         }
@@ -139,13 +151,13 @@ public class RadarView extends View {
 
         // 扫描时图标外圈呼吸光
         if (scanning) {
-            fillPaint.setColor(Color.argb((int) (0x2E * (0.5f + 0.5f * pingT)), 0x22, 0xD3, 0xEE));
+            fillPaint.setColor(tint((int) (0x2E * (0.5f + 0.5f * pingT))));
             canvas.drawCircle(cx, cy, dp(44), fillPaint);
         }
 
         // 机身
         RectF body = new RectF(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2);
-        iconPaint.setColor(scanning ? ACCENT : 0xFF3B5170);
+        iconPaint.setColor(scanning ? accent : idleBody);
         canvas.drawRoundRect(body, dp(9), dp(9), iconPaint);
 
         // 顶部出纸

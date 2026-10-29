@@ -7,6 +7,11 @@
 
 ### 新增
 
+- **App 正式命名 + 图标**：更名「DiLabel 控制台」；新增雷达+打印机风格启动图标
+  （传统 PNG 五密度 + Android 8.0+ 自适应图标），生成脚本 `scripts/make_icon.py` 可复现
+- **深/浅主题切换**：雷达区右上角 ☀/☾ 按钮即点即切，日志与设备列表在切换后保留，
+  主题选择持久化（SharedPreferences）；浅色主题状态栏图标自动转深色
+
 - **通道选取功能**（依据 Dlabel APK 证据：BLE/SPP 双通道 + Manifest usb.host）：
   界面新增 BLE GATT / 经典蓝牙 SPP / USB (OTG) 三通道芯片，扫描按钮与连接/发送
   按通道自动路由；新增 `UsbPrinterConnection.java`（class 7 / bulk OUT 枚举、

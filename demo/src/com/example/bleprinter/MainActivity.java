@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -56,22 +57,47 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private static final int CH_SPP = 1;
     private static final int CH_USB = 2;
 
-    // ---- 配色（暗色控制台主题） ----
-    private static final int C_BG_TOP = 0xFF0B1220;
-    private static final int C_BG_MID = 0xFF0E1A33;
-    private static final int C_BG_BOT = 0xFF142648;
-    private static final int C_CARD = 0xFF15223E;
-    private static final int C_CARD_STROKE = 0xFF24365A;
-    private static final int C_CARD_SEL = 0xFF1B2E56;
-    private static final int C_TEXT = 0xFFE6EDF7;
-    private static final int C_SUB = 0xFF8CA0BF;
-    private static final int C_FAINT = 0xFF5E7191;
-    private static final int C_ACCENT = 0xFF22D3EE;
-    private static final int C_INDIGO = 0xFF6366F1;
-    private static final int C_GREEN = 0xFF34D399;
-    private static final int C_AMBER = 0xFFFBBF24;
-    private static final int C_RED = 0xFFF87171;
-    private static final int C_BLUE = 0xFF60A5FA;
+    // ---- 深色主题（默认，控制台风格） ----
+    private static final int D_BG_TOP = 0xFF0B1220;
+    private static final int D_BG_MID = 0xFF0E1A33;
+    private static final int D_BG_BOT = 0xFF142648;
+    private static final int D_CARD = 0xFF15223E;
+    private static final int D_CARD_STROKE = 0xFF24365A;
+    private static final int D_CARD_SEL = 0xFF1B2E56;
+    private static final int D_TEXT = 0xFFE6EDF7;
+    private static final int D_SUB = 0xFF8CA0BF;
+    private static final int D_FAINT = 0xFF5E7191;
+    private static final int D_ACCENT = 0xFF22D3EE;
+    private static final int D_INDIGO = 0xFF6366F1;
+    private static final int D_GREEN = 0xFF34D399;
+    private static final int D_AMBER = 0xFFFBBF24;
+    private static final int D_RED = 0xFFF87171;
+    private static final int D_BLUE = 0xFF60A5FA;
+
+    // ---- 浅色主题 ----
+    private static final int L_BG_TOP = 0xFFF4F7FD;
+    private static final int L_BG_MID = 0xFFEDF1F9;
+    private static final int L_BG_BOT = 0xFFE2E9F6;
+    private static final int L_CARD = 0xFFFFFFFF;
+    private static final int L_CARD_STROKE = 0xFFD9E1F0;
+    private static final int L_CARD_SEL = 0xFFDDF3FA;
+    private static final int L_TEXT = 0xFF16233B;
+    private static final int L_SUB = 0xFF51617C;
+    private static final int L_FAINT = 0xFF93A1B8;
+    private static final int L_ACCENT = 0xFF0891B2;
+    private static final int L_INDIGO = 0xFF6366F1;
+    private static final int L_GREEN = 0xFF059669;
+    private static final int L_AMBER = 0xFFB45309;
+    private static final int L_RED = 0xFFDC2626;
+    private static final int L_BLUE = 0xFF2563EB;
+
+    // ---- 当前生效调色板（applyPalette 按主题整体赋值） ----
+    private int C_BG_TOP, C_BG_MID, C_BG_BOT, C_CARD, C_CARD_STROKE, C_CARD_SEL;
+    private int C_TEXT, C_SUB, C_FAINT, C_ACCENT, C_INDIGO, C_GREEN, C_AMBER, C_RED, C_BLUE;
+    private int accentTintBg, chipStroke, consoleStroke, barsEmpty;
+    private int btnOnAccent, btnOnGreen, logDefault, logBle;
+    private boolean dark = true;
+    private SharedPreferences prefs;
 
     private BleScanner scanner;
     private BlePrinterConnection connection;
@@ -94,12 +120,15 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private int st = BlePrinterConnection.STATE_DISCONNECTED;   // 三通道统一状态
     private DeviceItem selected;
     private ValueAnimator dotPulse;
+    private TextView themeBtn;
+    private final java.util.ArrayList<LogLine> logBuf = new java.util.ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(C_BG_TOP);
-        getWindow().setNavigationBarColor(C_BG_TOP);
+        prefs = getSharedPreferences("dilabel", MODE_PRIVATE);
+        dark = prefs.getBoolean("dark", true);
+        applyPalette();
         buildUi();
         scanner = new BleScanner(this, this);
         connection = new BlePrinterConnection(this, this);
@@ -150,6 +179,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         });
         usb.register();
         requestBtPermissions();
+        switchChannel(CH_BLE);
         refreshButtons();   // connection 就绪后刷新按钮初始禁用态
         appendLog("-- DiLabel 多厂家连接控制台就绪, 点雷达或扫描键开始 --");
     }
@@ -171,14 +201,33 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         root.setBackground(bg);
         root.setPadding(dp(14), dp(4), dp(14), dp(10));
 
-        // ===== 头部：雷达动画 =====
+        // ===== 头部：雷达动画 + 主题切换按钮 =====
         radar = new RadarView(this);
+        radar.setColors(C_ACCENT, dark ? 0xFF3B5170 : 0xFF9FB0C9);
         radar.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { scanAction(); }
         });
+        FrameLayout radarWrap = new FrameLayout(this);
+        radarWrap.addView(radar, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        themeBtn = new TextView(this);
+        themeBtn.setText(dark ? "☀" : "☾");
+        themeBtn.setTextSize(15);
+        themeBtn.setGravity(Gravity.CENTER);
+        themeBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
+        themeBtn.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
+                roundRect(accentTintBg, chipStroke, dp(999)), null));
+        themeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { toggleTheme(); }
+        });
+        FrameLayout.LayoutParams tlp2 = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.END);
+        tlp2.setMargins(0, dp(6), dp(4), 0);
+        radarWrap.addView(themeBtn, tlp2);
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(150));
-        root.addView(radar, rlp);
+        root.addView(radarWrap, rlp);
 
         // 状态胶囊
         LinearLayout pill = new LinearLayout(this);
@@ -235,7 +284,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         root.addView(chRow, cplp);
 
         // 扫描主按钮（随通道切换语义）
-        scanBtn = bigBtn("", new int[]{C_ACCENT, C_INDIGO}, 0xFF071018, 0);
+        scanBtn = bigBtn("", new int[]{C_ACCENT, C_INDIGO}, btnOnAccent, 0);
         scanBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { scanAction(); }
         });
@@ -261,7 +310,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         FrameLayout listContainer = new FrameLayout(this);
         ListView list = new ListView(this);
         list.setDivider(null);
-        list.setAdapter(listAdapter = new DeviceAdapter());
+        if (listAdapter == null) listAdapter = new DeviceAdapter();
+        list.setAdapter(listAdapter);   // 主题重建时复用，保留设备列表
         list.setBackgroundColor(Color.TRANSPARENT);
         list.setCacheColorHint(Color.TRANSPARENT);
         listContainer.addView(list, new FrameLayout.LayoutParams(
@@ -297,7 +347,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         root.addView(logHead);
 
         consoleScroll = new ScrollView(this);
-        consoleScroll.setBackground(roundRect(0xFF0A0F1E, 0xFF1B2A48, dp(10)));
+        consoleScroll.setBackground(roundRect(
+                dark ? 0xFF0A0F1E : 0xFFFFFFFF, consoleStroke, dp(10)));
         logText = new TextView(this);
         logText.setTextIsSelectable(true);
         logText.setTypeface(Typeface.MONOSPACE);
@@ -306,6 +357,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         logText.setPadding(dp(10), dp(8), dp(10), dp(8));
         logText.setLineSpacing(dp(2), 1f);
         consoleScroll.addView(logText);
+        for (LogLine l : logBuf) appendToView(l.text, l.color);   // 主题切换后恢复日志
         LinearLayout.LayoutParams slp2 = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 0.72f);
         slp2.topMargin = dp(2);
@@ -346,7 +398,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         // ===== 操作按钮 2×2 =====
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        connBtn = actionBtn("连接设备", new int[]{C_ACCENT, C_INDIGO}, 0xFF071018);
+        connBtn = actionBtn("连接设备", new int[]{C_ACCENT, C_INDIGO}, btnOnAccent);
         testBtn = actionBtn("适配测试", null, C_AMBER);
         row1.addView(connBtn, cellW());
         row1.addView(testBtn, cellW());
@@ -354,7 +406,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        printBtn = actionBtn("打印测试标签", new int[]{C_GREEN, 0xFF059669}, 0xFF04120C);
+        printBtn = actionBtn("打印测试标签", new int[]{C_GREEN, 0xFF059669}, btnOnGreen);
         discBtn = actionBtn("断开连接", null, C_RED);
         row2.addView(printBtn, cellW());
         row2.addView(discBtn, cellW());
@@ -374,7 +426,6 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         });
 
         setContentView(root);
-        switchChannel(CH_BLE);
     }
 
     // ---- 通道切换 ----
@@ -436,7 +487,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             g.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
             g.setColors(gradient);
         } else {
-            g.setColor(0x1422D3EE);
+            g.setColor(accentTintBg);
+            g.setStroke(dp(1), chipStroke);
         }
         g.setCornerRadius(dp(14));
         if (stroke != 0) {
@@ -484,8 +536,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             g.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
             c.setTextColor(0xFF071018);
         } else {
-            g.setColor(0x1422D3EE);
-            g.setStroke(dp(1), 0xFF2A3C60);
+            g.setColor(accentTintBg);
+            g.setStroke(dp(1), chipStroke);
             c.setTextColor(C_SUB);
         }
         c.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), g, null));
@@ -503,7 +555,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
 
     private GradientDrawable pillBg(int strokeColor) {
         GradientDrawable g = new GradientDrawable();
-        g.setColor(0x1A22D3EE);
+        g.setColor(accentTintBg);
         g.setCornerRadius(dp(999));
         g.setStroke(dp(1), strokeColor);
         return g;
@@ -774,22 +826,29 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         main.post(new Runnable() {
             @Override public void run() {
                 st = state;
-                String s;
-                int color;
-                switch (state) {
-                    case BlePrinterConnection.STATE_CONNECTING:
-                        s = "连接中..."; color = C_AMBER; startPulse(); break;
-                    case BlePrinterConnection.STATE_CONNECTED:
-                        s = "已连接 · 发现服务中"; color = C_BLUE; stopPulse(); break;
-                    case BlePrinterConnection.STATE_READY:
-                        s = "就绪 · 可打印"; color = C_GREEN; stopPulse(); break;
-                    default:
-                        s = "未连接"; color = C_FAINT; stopPulse(); break;
-                }
-                setPill(s, color, color);
+                renderState();
                 refreshButtons();
             }
         });
+    }
+
+    /** 按 st 渲染状态胶囊（状态回调与主题重建共用） */
+    private void renderState() {
+        String s;
+        int color;
+        switch (st) {
+            case BlePrinterConnection.STATE_CONNECTING:
+                s = "连接中..."; color = C_AMBER; startPulse(); break;
+            case BlePrinterConnection.STATE_CONNECTED:
+                s = "已连接 · 发现服务中"; color = C_BLUE; stopPulse(); break;
+            case BlePrinterConnection.STATE_READY:
+                s = channel == CH_SPP ? "SPP 已连接 · 可打印"
+                        : channel == CH_USB ? "USB 已连接 · 可打印" : "就绪 · 可打印";
+                color = C_GREEN; stopPulse(); break;
+            default:
+                s = "未连接"; color = C_FAINT; stopPulse(); break;
+        }
+        setPill(s, color, color);
     }
 
     @Override
@@ -847,13 +906,22 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     }
 
     private void appendLog(String s) {
-        int color = 0xFF93A6C4;
+        int color = pickLogColor(s);
+        logBuf.add(new LogLine(s, color));
+        if (logBuf.size() > 400) logBuf.remove(0);   // 防止无限增长
+        if (logText != null) appendToView(s, color);
+    }
+
+    private int pickLogColor(String s) {
         if (s.contains("失败") || s.contains("错误") || s.contains("无法")
-                || s.contains("false") || s.contains("断开")) color = C_RED;
-        else if (s.contains("就绪") || s.contains("命中") || s.contains("已连接")) color = C_GREEN;
-        else if (s.startsWith("发现:") || s.startsWith("选中:") || s.startsWith("--")) color = C_AMBER;
-        else if (s.startsWith("[BLE") || s.startsWith("[SPP") || s.startsWith("[USB"))
-            color = 0xFF7DD3FC;
+                || s.contains("false") || s.contains("断开")) return C_RED;
+        if (s.contains("就绪") || s.contains("命中") || s.contains("已连接")) return C_GREEN;
+        if (s.startsWith("发现:") || s.startsWith("选中:") || s.startsWith("--")) return C_AMBER;
+        if (s.startsWith("[BLE") || s.startsWith("[SPP") || s.startsWith("[USB")) return logBle;
+        return logDefault;
+    }
+
+    private void appendToView(String s, int color) {
         SpannableStringBuilder ssb = new SpannableStringBuilder(s + "\n");
         ssb.setSpan(new ForegroundColorSpan(color), 0, ssb.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -863,8 +931,80 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         });
     }
 
+    /** 日志缓冲条目（主题重建后按此恢复） */
+    private static class LogLine {
+        final String text;
+        final int color;
+        LogLine(String t, int c) { text = t; color = c; }
+    }
+
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+    }
+
+    /** 深/浅主题切换：重建视图，日志与设备列表保留 */
+    private void toggleTheme() {
+        dark = !dark;
+        prefs.edit().putBoolean("dark", dark).apply();
+        boolean scanning = scanner != null && scanner.isScanning();
+        applyPalette();
+        buildUi();
+        restoreChannelUi();
+        radar.setScanning(scanning);
+        renderState();
+        refreshButtons();
+        toast(dark ? "已切换到深色主题" : "已切换到浅色主题");
+    }
+
+    /** 主题重建后恢复通道相关 UI（不清空连接与列表） */
+    private void restoreChannelUi() {
+        styleChannel();
+        scanBtn.setText(scanLabel());
+        emptyHint.setText(hintText());
+        listAdapter.notifyDataSetChanged();
+        listAdapter.refreshMeta();
+    }
+
+    /** 按当前主题整体赋值调色板 */
+    private void applyPalette() {
+        if (dark) {
+            C_BG_TOP = D_BG_TOP; C_BG_MID = D_BG_MID; C_BG_BOT = D_BG_BOT;
+            C_CARD = D_CARD; C_CARD_STROKE = D_CARD_STROKE; C_CARD_SEL = D_CARD_SEL;
+            C_TEXT = D_TEXT; C_SUB = D_SUB; C_FAINT = D_FAINT;
+            C_ACCENT = D_ACCENT; C_INDIGO = D_INDIGO; C_GREEN = D_GREEN;
+            C_AMBER = D_AMBER; C_RED = D_RED; C_BLUE = D_BLUE;
+            chipStroke = 0xFF2A3C60;
+            consoleStroke = 0xFF1B2A48;
+            barsEmpty = 0xFF2A3A58;
+            btnOnAccent = 0xFF071018;
+            btnOnGreen = 0xFF04120C;
+            logDefault = 0xFF93A6C4;
+            logBle = 0xFF7DD3FC;
+        } else {
+            C_BG_TOP = L_BG_TOP; C_BG_MID = L_BG_MID; C_BG_BOT = L_BG_BOT;
+            C_CARD = L_CARD; C_CARD_STROKE = L_CARD_STROKE; C_CARD_SEL = L_CARD_SEL;
+            C_TEXT = L_TEXT; C_SUB = L_SUB; C_FAINT = L_FAINT;
+            C_ACCENT = L_ACCENT; C_INDIGO = L_INDIGO; C_GREEN = L_GREEN;
+            C_AMBER = L_AMBER; C_RED = L_RED; C_BLUE = L_BLUE;
+            chipStroke = L_CARD_STROKE;
+            consoleStroke = L_CARD_STROKE;
+            barsEmpty = 0xFFCBD5E4;
+            btnOnAccent = 0xFFFFFFFF;
+            btnOnGreen = 0xFFFFFFFF;
+            logDefault = 0xFF5A6B85;
+            logBle = 0xFF0369A1;
+        }
+        accentTintBg = (0x14 << 24) | (C_ACCENT & 0x00FFFFFF);
+        if (radar != null) radar.setColors(C_ACCENT, dark ? 0xFF3B5170 : 0xFF9FB0C9);
+        getWindow().setStatusBarColor(C_BG_TOP);
+        getWindow().setNavigationBarColor(C_BG_TOP);
+        // 浅色主题下状态栏图标改深色，否则白图标融进浅底看不见
+        View deco = getWindow().getDecorView();
+        if (dark) {
+            deco.setSystemUiVisibility(deco.getSystemUiVisibility() & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        } else {
+            deco.setSystemUiVisibility(deco.getSystemUiVisibility() | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        }
     }
 
     // ---------- 设备条目（三通道统一模型） ----------
@@ -985,8 +1125,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             h.tag.setText(d.channel == CH_SPP ? "SPP" : d.channel == CH_USB ? "USB" : "BLE");
             GradientDrawable tg = new GradientDrawable();
             tg.setCornerRadius(dp(999));
-            tg.setStroke(dp(1), 0xFF2A3C60);
-            tg.setColor(0x1422D3EE);
+            tg.setStroke(dp(1), chipStroke);
+            tg.setColor(accentTintBg);
             h.tag.setTextColor(C_SUB);
             h.tag.setBackground(tg);
 
@@ -1050,6 +1190,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             card.addView(tag, tlp);
 
             SignalBarsView bars = new SignalBarsView(MainActivity.this);
+            bars.setEmptyColor(barsEmpty);
             LinearLayout.LayoutParams barlp = new LinearLayout.LayoutParams(dp(21), dp(15));
             barlp.leftMargin = dp(9);
             card.addView(bars, barlp);
