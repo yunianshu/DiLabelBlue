@@ -212,6 +212,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         themeBtn = new TextView(this);
         themeBtn.setText(dark ? "☀" : "☾");
+        themeBtn.setTextColor(C_SUB);
         themeBtn.setTextSize(15);
         themeBtn.setGravity(Gravity.CENTER);
         themeBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
@@ -372,6 +373,9 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         chipTspl = chip("TSPL");
         chipCpcl = chip("CPCL");
         styleChip(chipAuto, true);
+        styleChip(chipEsc, false);      // 未选中的也要套样式，否则用框架默认白字
+        styleChip(chipTspl, false);
+        styleChip(chipCpcl, false);
         TextView[] pcs = {chipAuto, chipEsc, chipTspl, chipCpcl};
         for (int i = 0; i < pcs.length; i++) {
             final int idx = i;

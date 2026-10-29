@@ -11,6 +11,8 @@
   （传统 PNG 五密度 + Android 8.0+ 自适应图标），生成脚本 `scripts/make_icon.py` 可复现
 - **深/浅主题切换**：雷达区右上角 ☀/☾ 按钮即点即切，日志与设备列表在切换后保留，
   主题选择持久化（SharedPreferences）；浅色主题状态栏图标自动转深色
+- 修复：协议芯片（ESC/POS、TSPL、CPCL）创建时未套样式，用框架默认白字在浅色主题下
+  融底不可读；主题按钮文字色随主题
 
 - **通道选取功能**（依据 Dlabel APK 证据：BLE/SPP 双通道 + Manifest usb.host）：
   界面新增 BLE GATT / 经典蓝牙 SPP / USB (OTG) 三通道芯片，扫描按钮与连接/发送
