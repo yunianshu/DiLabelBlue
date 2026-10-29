@@ -51,9 +51,16 @@ public class BlePrinterConnection {
     private int state = STATE_DISCONNECTED;
     private BluetoothDevice pendingDevice;
     private int retriesLeft = 2;   // status=133 自动重试次数（业界标准做法）
+    private android.content.BroadcastReceiver bondReceiver;   // 配对状态广播
 
     private final Queue<byte[]> sendQueue = new ArrayDeque<>();
     private boolean writing = false;
+    // 真机踩坑（HPRT T200）：按 MTU 240 发 237 字节大包固件缓冲不足会整包丢弃，
+    // 固定 20 字节分片 + 小间隔是所有机型的最大公约数（对应 Dlabel 的分片流控参数）
+    private static final int CHUNK = 20;
+    private static final long PACKET_INTERVAL_MS = 15;
+    private final android.os.Handler mainHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
     private VendorDB.Profile profile;
 
     public BlePrinterConnection(Context ctx, Listener l) {
@@ -70,7 +77,54 @@ public class BlePrinterConnection {
         retriesLeft = 2;
         log("连接: " + device.getName() + " [" + device.getAddress() + "]");
         setState(STATE_CONNECTING);
+        // 真机踩坑（HPRT T200）：未 bond 的设备 GATT 写入"成功"但固件忽略数据，
+        // 必须先系统配对（createBond 为公开 API），配对完成后广播回调里继续连接
+        if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
+            log("设备未配对, 发起系统配对（如弹窗请在手机上确认）...");
+            registerBondReceiver();
+            if (!device.createBond()) {
+                log("createBond 返回 false");
+                setState(STATE_DISCONNECTED);
+            }
+            return;
+        }
         connectGatt(device);
+    }
+
+    private void registerBondReceiver() {
+        if (bondReceiver != null) return;
+        bondReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, android.content.Intent i) {
+                BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                int state = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1);
+                if (d == null || pendingDevice == null
+                        || !d.getAddress().equals(pendingDevice.getAddress())) return;
+                if (state == BluetoothDevice.BOND_BONDED) {
+                    log("配对成功, 继续连接...");
+                    unregisterBondReceiver();
+                    setState(STATE_CONNECTING);
+                    connectGatt(pendingDevice);
+                } else if (state == BluetoothDevice.BOND_NONE) {
+                    log("配对失败/被取消");
+                    unregisterBondReceiver();
+                    setState(STATE_DISCONNECTED);
+                }
+            }
+        };
+        android.content.IntentFilter f =
+                new android.content.IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.registerReceiver(bondReceiver, f, Context.RECEIVER_EXPORTED);
+        } else {
+            context.registerReceiver(bondReceiver, f);
+        }
+    }
+
+    private void unregisterBondReceiver() {
+        if (bondReceiver == null) return;
+        try { context.unregisterReceiver(bondReceiver); } catch (Exception ignore) { }
+        bondReceiver = null;
     }
 
     private void connectGatt(BluetoothDevice device) {
@@ -82,6 +136,7 @@ public class BlePrinterConnection {
     }
 
     public void disconnect() {
+        unregisterBondReceiver();
         if (gatt != null) {
             gatt.disconnect();
             gatt.close();
@@ -168,7 +223,10 @@ public class BlePrinterConnection {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log("写入失败 status=" + status);
             }
-            flushQueue();                      // 一包写完再发下一包（流控关键）
+            // 一包写完再隔小间隔发下一包（流控 + 给固件处理时间）
+            mainHandler.postDelayed(new Runnable() {
+                @Override public void run() { flushQueue(); }
+            }, PACKET_INTERVAL_MS);
         }
 
         @Override
@@ -230,7 +288,7 @@ public class BlePrinterConnection {
                     }
                 }
             }
-            writeChar = wrNoRsp != null ? wrNoRsp : wrRsp;
+            writeChar = wrRsp != null ? wrRsp : wrNoRsp;   // 带响应优先：有真实流控
             if (writeChar != null) log("自动选择写特征: " + writeChar.getUuid());
         }
         if (notifyChar == null) {
@@ -279,7 +337,7 @@ public class BlePrinterConnection {
             log("通道未就绪, 丢弃 " + data.length + " 字节");
             return;
         }
-        int chunk = Math.max(20, mtu);
+        int chunk = CHUNK;   // 固定 20 字节，兼容小缓冲固件
         for (int i = 0; i < data.length; i += chunk) {
             int end = Math.min(data.length, i + chunk);
             byte[] part = new byte[end - i];
@@ -297,9 +355,9 @@ public class BlePrinterConnection {
         writing = true;
         writeChar.setValue(part);
         writeChar.setWriteType((writeChar.getProperties()
-                & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
-                ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0
+                ? BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                : BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
         if (!gatt.writeCharacteristic(writeChar)) {
             writing = false;
             log("writeCharacteristic 返回 false");

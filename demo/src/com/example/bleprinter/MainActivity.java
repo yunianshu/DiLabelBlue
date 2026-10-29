@@ -677,6 +677,14 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         for (BluetoothDevice d : set) {
             items.add(DeviceItem.spp(d, VendorDB.matchByName(d.getName())));
         }
+        // 识别出的厂商置顶，其余按名称排序（配对列表系统返回是无序的）
+        java.util.Collections.sort(items, new java.util.Comparator<DeviceItem>() {
+            @Override public int compare(DeviceItem a, DeviceItem b) {
+                int pa = a.profile != null ? 0 : 1, pb = b.profile != null ? 0 : 1;
+                if (pa != pb) return pa - pb;
+                return String.CASE_INSENSITIVE_ORDER.compare(a.name, b.name);
+            }
+        });
         listAdapter.replaceAll(items);
         updateSecondary();
         appendLog("-- 已配对 " + items.size() + " 台 (SPP 通道) --");
