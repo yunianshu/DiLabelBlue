@@ -2,6 +2,7 @@ package com.example.bleprinter;
 
 import android.Manifest;
 import android.animation.ValueAnimator;
+import android.app.AlertDialog;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -36,6 +37,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -120,7 +122,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private int st = BlePrinterConnection.STATE_DISCONNECTED;   // 三通道统一状态
     private DeviceItem selected;
     private ValueAnimator dotPulse;
-    private TextView themeBtn;
+    private TextView themeBtn, secondaryBtn;
     private final java.util.ArrayList<LogLine> logBuf = new java.util.ArrayList<>();
 
     @Override
@@ -294,6 +296,18 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         slp.topMargin = dp(10);
         root.addView(scanBtn, slp);
 
+        // 通道副操作（SPP：一键移除全部配对；其他通道隐藏）
+        secondaryBtn = bigBtn("", null, C_RED, 0xFF2A3C60);
+        secondaryBtn.setTextSize(12);
+        secondaryBtn.setVisibility(View.GONE);
+        secondaryBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { unpairAll(); }
+        });
+        LinearLayout.LayoutParams secLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(32));
+        secLp.topMargin = dp(6);
+        root.addView(secondaryBtn, secLp);
+
         // ===== 设备列表 =====
         LinearLayout listHead = new LinearLayout(this);
         listHead.setOrientation(LinearLayout.HORIZONTAL);
@@ -442,6 +456,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         listAdapter.replaceAll(new ArrayList<DeviceItem>());
         scanBtn.setText(scanLabel());
         emptyHint.setText(hintText());
+        updateSecondary();
         listAdapter.refreshMeta();
         appendLog("-- 切换到 " + channelName() + " 通道 --");
         refreshButtons();
@@ -663,6 +678,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             items.add(DeviceItem.spp(d, VendorDB.matchByName(d.getName())));
         }
         listAdapter.replaceAll(items);
+        updateSecondary();
         appendLog("-- 已配对 " + items.size() + " 台 (SPP 通道) --");
     }
 
@@ -965,8 +981,81 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         styleChannel();
         scanBtn.setText(scanLabel());
         emptyHint.setText(hintText());
+        updateSecondary();
         listAdapter.notifyDataSetChanged();
         listAdapter.refreshMeta();
+    }
+
+    /** 通道副操作按钮显隐与文案 */
+    private void updateSecondary() {
+        if (secondaryBtn == null) return;
+        if (channel == CH_SPP) {
+            Set<BluetoothDevice> set = btAdapter() == null ? null : btAdapter().getBondedDevices();
+            secondaryBtn.setText("⚠ 一键移除全部已配对设备"
+                    + (set == null ? "" : " (" + set.size() + " 台)"));
+            secondaryBtn.setVisibility(View.VISIBLE);
+        } else {
+            secondaryBtn.setVisibility(View.GONE);
+        }
+    }
+
+    /** 一键移除全部已配对设备（二次确认；反射调用隐藏 API removeBond） */
+    private void unpairAll() {
+        BluetoothAdapter ad = btAdapter();
+        if (ad == null) return;
+        final java.util.ArrayList<BluetoothDevice> list = new java.util.ArrayList<>(ad.getBondedDevices());
+        if (list.isEmpty()) { toast("没有已配对设备"); return; }
+        new AlertDialog.Builder(this)
+                .setTitle("移除全部配对")
+                .setMessage("将移除 " + list.size() + " 台设备的配对（含非打印机设备），确定继续？")
+                .setPositiveButton("全部移除", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        doUnpairAll(list);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void doUnpairAll(final java.util.ArrayList<BluetoothDevice> list) {
+        disconnectAll();
+        appendLog("-- 开始移除 " + list.size() + " 台配对 --");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                int ok = 0;
+                for (final BluetoothDevice d : list) {
+                    final boolean b = removeBond(d);
+                    if (b) ok++;
+                    main.post(new Runnable() {
+                        @Override public void run() {
+                            String name = d.getName() == null ? d.getAddress() : d.getName();
+                            appendLog((b ? "已移除: " : "移除失败: ") + name);
+                        }
+                    });
+                    try { Thread.sleep(120); } catch (InterruptedException ignore) { }
+                }
+                final int done = ok;
+                main.post(new Runnable() {
+                    @Override public void run() {
+                        appendLog("-- 移除完成: 成功 " + done + "/" + list.size() + " --");
+                        toast("已移除 " + done + "/" + list.size());
+                        updateSecondary();
+                        listBonded();
+                    }
+                });
+            }
+        }, "unpair-all").start();
+    }
+
+    /** 反射调用隐藏 API BluetoothDevice.removeBond()（部分 ROM 可能限制） */
+    private boolean removeBond(BluetoothDevice d) {
+        try {
+            java.lang.reflect.Method m = d.getClass().getMethod("removeBond");
+            return Boolean.TRUE.equals(m.invoke(d));
+        } catch (Exception e) {
+            appendLog("[错误] removeBond 调用失败: " + e.getMessage());
+            return false;
+        }
     }
 
     /** 按当前主题整体赋值调色板 */
