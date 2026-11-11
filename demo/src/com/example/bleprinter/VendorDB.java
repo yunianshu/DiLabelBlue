@@ -110,6 +110,14 @@ public final class VendorDB {
                 new String[]{CHR_FE1, CHR_HPRT_WRITE, CHR_GPRINTER_WRITE, CHR_FF02_WRITE},
                 new String[]{CHR_FE1, CHR_HPRT_NOTIFY, CHR_GPRINTER_NOTIFY, CHR_FF01_NOTIFY}));
 
+        // 汉印 ME35/ME35PLUS 便携标签机（2026-11-11 真机验证）：
+        // BLE ff00/ff02 通道 + TSPL 指令族打印命中（文字+条码）；ESC/POS、CPCL 无反应
+        PROFILES.add(new Profile("汉印 ME35 系列", Protocol.TSPL,
+                new String[]{"me35"},
+                new String[]{SVC_GPRINTER, SVC_FE0, SVC_HPRT},
+                new String[]{CHR_GPRINTER_WRITE, CHR_FE1, CHR_HPRT_WRITE},
+                new String[]{CHR_GPRINTER_NOTIFY, CHR_FE1, CHR_HPRT_NOTIFY}));
+
         // 芯烨 Xprinter / 白牌热敏
         PROFILES.add(new Profile("芯烨 Xprinter", Protocol.ESC_POS,
                 new String[]{"xp", "xprinter", "pos", "p58", "thermal"},

@@ -7,6 +7,10 @@
 
 ### 新增
 
+- **汉印 ME35 系列适配（真机打印成功）**：ME35PLUS-5007 经 BLE `ff00/ff02` 通道用
+  **TSPL** 指令族成功打出标签（文字+条码）；ESC/POS、CPCL、DLE EOT 探测均无反应。
+  VendorDB 新增 ME35 专属 Profile（TSPL、ff00 候选置顶），AUTO 模式对 ME35 默认 TSPL
+  （测试记录见 问题记录.md #23）
 - **BLE 连接前自动配对**：未 bond 的设备先 createBond，配对完成回调里继续
   GATT 连接（HPRT 等新机型要求 bond 后才认打印数据）
 - **兼容模式分片**：固定 20 字节 + 15ms 包间隔（大包在小缓冲固件上会整包丢弃）；
