@@ -106,6 +106,10 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     private ClassicSppConnection spp;
     private UsbPrinterConnection usb;
     private final Handler main = new Handler(Looper.getMainLooper());
+    // 通用识别状态：探测命中的指令族（AUTO 兜底）+ 当前探测步
+    private VendorDB.Protocol probedProtocol;
+    private int probeAwait = -1;   // 正在等回包的探测步序号，-1 = 无
+    private int probeRx;           // 该步累计收到的回包字节数
 
     private DeviceAdapter listAdapter;
     private RadarView radar;
@@ -159,6 +163,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
             public void onData(final byte[] data) {
                 main.post(new Runnable() {
                     @Override public void run() {
+                        if (probeAwait >= 0) probeRx += data.length;   // 探测窗口内累计回包
                         log("[SPP] 收到 " + data.length + " 字节");
                     }
                 });
@@ -731,15 +736,66 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         refreshButtons();
     }
 
-    /** 对应 Dlabel "打印机适配测试"：发探测指令看是否有回包，判断通道与协议族 */
+    /**
+     * 通用适配测试（Dlabel "打印机适配测试" 的通用化升级）：
+     * 机型名靠连接时就自动读 0x180A（连接层做，见 BlePrinterConnection.readDeviceInfo）；
+     * 指令族靠逐族探测：各族发一条无副作用查询指令，窗口内谁回包就是谁；
+     * CPCL 无查询指令，只能靠打印试打排除。
+     */
     private void doAdaptTest() {
         if (st != BlePrinterConnection.STATE_READY) {
             toast("请先连接(通道就绪后测试)");
             return;
         }
-        appendLog("-- 适配测试: 发送状态探测指令 --");
-        sendBytes(LabelProtocols.probeCommand());
-        toast("探测指令已发送, 观察日志回包");
+        probedProtocol = null;
+        appendLog("-- 适配测试: 逐族探测开始(机型名看连接日志的 0x180A) --");
+        runProbe(0);
+    }
+
+    /** 逐族探测步骤：payload=null 表示该族无查询指令 */
+    private static class ProbeStep {
+        final String name;
+        final VendorDB.Protocol proto;
+        final byte[] payload;
+        ProbeStep(String n, VendorDB.Protocol p, byte[] b) { name = n; proto = p; payload = b; }
+    }
+
+    private static final ProbeStep[] PROBES = {
+            new ProbeStep("ESC/POS", VendorDB.Protocol.ESC_POS, LabelProtocols.probeEscPos()),
+            new ProbeStep("TSPL/TSC", VendorDB.Protocol.TSPL, LabelProtocols.probeTspl()),
+            new ProbeStep("ZPL", VendorDB.Protocol.ZPL, LabelProtocols.probeZpl()),
+            new ProbeStep("CPCL", VendorDB.Protocol.CPCL, null),
+    };
+
+    private void runProbe(final int i) {
+        if (i >= PROBES.length) {
+            appendLog("-- 探测完成: 各族均无回包, 请手选指令族点打印试打 --");
+            return;
+        }
+        final ProbeStep p = PROBES[i];
+        if (p.payload == null) {
+            appendLog("探测 " + p.name + ": 无查询指令, 跳过(靠打印试打/排除法)");
+            runProbe(i + 1);
+            return;
+        }
+        probeAwait = i;
+        probeRx = 0;
+        appendLog("探测 " + p.name + " (" + p.payload.length + " 字节)...");
+        sendBytes(p.payload);
+        main.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (probeAwait != i) return;   // onData 已命中短路
+                probeAwait = -1;
+                if (probeRx > 0) {
+                    probedProtocol = p.proto;
+                    appendLog("-- 探测命中: " + p.name + " 回包 " + probeRx
+                            + " 字节, AUTO 兜底协议改为 " + p.name + " --");
+                } else {
+                    appendLog("探测 " + p.name + ": 1.5s 无回包");
+                    runProbe(i + 1);
+                }
+            }
+        }, 1500);
     }
 
     private void doPrint() {
@@ -765,8 +821,10 @@ public class MainActivity extends Activity implements BleScanner.Callback,
                 data = LabelProtocols.cpclTest(title, body);
                 break;
             default:
+                // AUTO 协议优先级：扫描识别的厂商徽章 > 探测命中 > ESC/POS 兜底
                 proto = selected != null && selected.profile != null
-                        ? selected.profile.protocol : VendorDB.Protocol.ESC_POS;
+                        ? selected.profile.protocol
+                        : probedProtocol != null ? probedProtocol : VendorDB.Protocol.ESC_POS;
                 data = buildAuto(proto, title, body);
                 break;
         }
@@ -787,6 +845,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         switch (p) {
             case TSPL: return LabelProtocols.tsplTest(title, body);
             case CPCL: return LabelProtocols.cpclTest(title, body);
+            case ZPL: return LabelProtocols.zplTest(title, body);
             default: return LabelProtocols.escPosTest(title, body);
         }
     }
@@ -839,6 +898,7 @@ public class MainActivity extends Activity implements BleScanner.Callback,
     public void onData(final byte[] data) {
         main.post(new Runnable() {
             @Override public void run() {
+                if (probeAwait >= 0) probeRx += data.length;   // 探测窗口内累计回包
                 StringBuilder sb = new StringBuilder("[BLE 回包] ");
                 for (int i = 0; i < Math.min(data.length, 32); i++) {
                     sb.append(String.format("%02X ", data[i]));

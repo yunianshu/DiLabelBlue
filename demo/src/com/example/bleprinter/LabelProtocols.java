@@ -70,10 +70,36 @@ public final class LabelProtocols {
         return out.toByteArray();
     }
 
-    /** 通用探测指令（适配测试用，多数机会回 ACK 或状态） */
-    public static byte[] probeCommand() {
-        // ESC/POS 实时状态 DLE EOT 1：返回 1 字节状态
+    /** ZPL 测试标签：^FD 文本 + ^BC Code128 条码（Zebra 系/部分白牌） */
+    public static byte[] zplTest(String title, String body) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        write(out, "^XA^PW480^LL320^LH0,0\r\n".getBytes(GBK));
+        write(out, "^FO60,40^A0N,44,44^FD".getBytes(GBK));
+        write(out, title.getBytes(GBK));
+        write(out, "^FS\r\n".getBytes(GBK));
+        write(out, "^FO60,110^A0N,28,28^FD".getBytes(GBK));
+        write(out, body.getBytes(GBK));
+        write(out, "^FS\r\n".getBytes(GBK));
+        write(out, "^FO60,170^BY2,3,60^BCN,90,Y,N,N^FD12345678^FS\r\n".getBytes(GBK));
+        write(out, "^XZ\r\n".getBytes(GBK));
+        return out.toByteArray();
+    }
+
+    // ---------- 逐族探测指令（无副作用查询，通用适配测试用：谁回包就是谁） ----------
+
+    /** ESC/POS 实时状态 DLE EOT 1：正常机回 1 字节打印机状态 */
+    public static byte[] probeEscPos() {
         return new byte[]{0x10, 0x04, 0x01};
+    }
+
+    /** TSPL/TSC 询问 ~!I：TSC 系固件回打印机配置信息（型号/固件版本） */
+    public static byte[] probeTspl() {
+        return "~!I\r\n".getBytes(GBK);
+    }
+
+    /** ZPL 主机状态 ~HS：Zebra 系固件回 3 行状态报文 */
+    public static byte[] probeZpl() {
+        return "~HS\r\n".getBytes(GBK);
     }
 
     private static void writeLine(ByteArrayOutputStream out, String s) {

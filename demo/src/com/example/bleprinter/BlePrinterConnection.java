@@ -42,6 +42,13 @@ public class BlePrinterConnection {
 
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
+    // 蓝牙 SIG 设备信息服务：通用机型识别（不依赖蓝牙广播名）
+    private static final UUID SVC_DEVICE_INFO = UUID.fromString("0000180a-0000-1000-8000-00805f9b34fb");
+    private static final UUID CHR_MODEL_NUMBER = UUID.fromString("00002a24-0000-1000-8000-00805f9b34fb");
+    private static final UUID CHR_MANUFACTURER = UUID.fromString("00002a29-0000-1000-8000-00805f9b34fb");
+    private static final UUID CHR_FIRMWARE_REV = UUID.fromString("00002a26-0000-1000-8000-00805f9b34fb");
+    private final Queue<BluetoothGattCharacteristic> infoQueue = new ArrayDeque<>();
+
     private final Context context;
     private final Listener listener;
     private BluetoothGatt gatt;
@@ -215,6 +222,7 @@ public class BlePrinterConnection {
         public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int status) {
             log("通知已开启, 通道就绪");
             setState(STATE_READY);
+            readDeviceInfo(g);   // 通用机型识别: SIG 0x180A
         }
 
         @Override
@@ -232,6 +240,18 @@ public class BlePrinterConnection {
         @Override
         public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
             if (listener != null) listener.onData(c.getValue());
+        }
+
+        // 读回调两个签名都要重写：API 33+ 只走带 byte[] 的新版，旧系统只走旧版
+        @Override
+        public void onCharacteristicRead(BluetoothGatt g, BluetoothGattCharacteristic c, int status) {
+            handleInfoRead(c, status, c.getValue());
+        }
+
+        @Override
+        public void onCharacteristicRead(BluetoothGatt g, BluetoothGattCharacteristic c,
+                                         byte[] value, int status) {
+            handleInfoRead(c, status, value);
         }
     };
 
@@ -315,10 +335,63 @@ public class BlePrinterConnection {
         }
     }
 
+    /** 连接就绪后读 SIG 设备信息服务 0x180A：0x2A24 型号 / 0x2A29 厂商 / 0x2A26 固件 */
+    private void readDeviceInfo(BluetoothGatt g) {
+        BluetoothGattService s = g.getService(SVC_DEVICE_INFO);
+        if (s == null) {
+            log("机型识别: 无 0x180A 设备信息服务(不少白牌机不带), 指令族靠探测");
+            return;
+        }
+        infoQueue.clear();
+        for (UUID u : new UUID[]{CHR_MODEL_NUMBER, CHR_MANUFACTURER, CHR_FIRMWARE_REV}) {
+            BluetoothGattCharacteristic c = s.getCharacteristic(u);
+            if (c != null) infoQueue.add(c);
+        }
+        if (infoQueue.isEmpty()) {
+            log("机型识别: 0x180A 下无可读特征");
+            return;
+        }
+        log("机型识别: 发现 0x180A, 逐项读取...");
+        readNextInfo();
+    }
+
+    private void readNextInfo() {
+        if (gatt == null) return;
+        BluetoothGattCharacteristic c = infoQueue.poll();
+        if (c == null) return;
+        if (!gatt.readCharacteristic(c)) {
+            log("机型识别: readCharacteristic 返回 false");
+        }
+    }
+
+    private void handleInfoRead(BluetoothGattCharacteristic c, int status, byte[] value) {
+        String id = shortUuid(c.getUuid());
+        String label = "2a24".equals(id) ? "型号" : "2a29".equals(id) ? "厂商"
+                : "2a26".equals(id) ? "固件" : (id == null ? c.getUuid().toString() : "0x" + id);
+        if (status == BluetoothGatt.GATT_SUCCESS && value != null && value.length > 0) {
+            log("机型识别: " + label + " = " + new String(value).trim());
+        } else {
+            log("机型识别: " + label + " 无数据 status=" + status);
+        }
+        readNextInfo();
+    }
+
+    /** SIG 标准 16bit UUID 的短码（如 "ff00"），非标准格式返回 null */
+    private static String shortUuid(UUID u) {
+        String str = u.toString().toLowerCase();
+        if (!str.endsWith("-0000-1000-8000-00805f9b34fb")) return null;
+        try {
+            return str.substring(4, 8);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private void enableNotify(BluetoothGatt g) {
         if (notifyChar == null) {
             log("无通知特征(单向打印机), 直接就绪");
             setState(STATE_READY);
+            readDeviceInfo(g);
             return;
         }
         g.setCharacteristicNotification(notifyChar, true);
