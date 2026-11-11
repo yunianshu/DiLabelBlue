@@ -139,6 +139,14 @@ public final class VendorDB {
                 new String[]{CHR_FE1, CHR_FFF2, CHR_NUS_WRITE},
                 new String[]{CHR_FE1, CHR_FFF1, CHR_NUS_NOTIFY}));
 
+        // BMA 系列白牌标签机（2026-11-11 真机验证）：
+        // 降级枚举命中 ff00/ff02 + CPCL 指令族打印命中；ESC/POS、TSPL 无反应
+        PROFILES.add(new Profile("BMA 系列", Protocol.CPCL,
+                new String[]{"bma"},
+                new String[]{SVC_GPRINTER, SVC_FE0},
+                new String[]{CHR_GPRINTER_WRITE, CHR_FE1},
+                new String[]{CHR_GPRINTER_NOTIFY, CHR_FE1}));
+
         // Dlabel printlist.list 中出现的型号前缀（type 2/3/4/5），未知品牌兜底
         PROFILES.add(new Profile("DiLabel 适配型号", Protocol.UNKNOWN,
                 new String[]{"printer", "m320", "1324d", "qr380a", "3120tu", "zh", "bhs",

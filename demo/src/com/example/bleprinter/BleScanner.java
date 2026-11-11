@@ -113,10 +113,11 @@ public class BleScanner {
         public void onScanResult(int callbackType, ScanResult result) {
             BluetoothDevice d = result.getDevice();
             String name = d.getName();
-            if (name == null || name.isEmpty()) return;   // 无名设备跳过
+            if (name == null || name.isEmpty()) return;   // 无名设备跳过（无身份可辨认且会刷屏）
             VendorDB.Profile p = VendorDB.matchByName(name);
-            // 过滤明显不是打印机的设备（手机/手表等常见名）
-            if (p == null && !looksLikePrinter(name)) return;
+            // 全量展示：不再按名称白名单过滤——白名单曾连续误杀真实打印机
+            // （HPRT T200 问题 #20、BMA3 问题 #24）。识别厂商的由列表排序置顶+徽章区分，
+            // 杂项设备沉底，不影响主列表。
             PrinterDevice pd = new PrinterDevice(d, result.getRssi(), p);
             found.put(d.getAddress(), pd);   // 覆盖旧记录，刷新 RSSI（界面上信号条会跳动）
             if (callback != null) callback.onDeviceFound(pd);
@@ -130,13 +131,4 @@ public class BleScanner {
         }
     };
 
-    /** 常见打印机蓝牙名称关键词（白牌机命名非常杂，故用宽匹配） */
-    static boolean looksLikePrinter(String name) {
-        String lower = name.toLowerCase();
-        return lower.contains("print") || lower.contains("printer") || lower.startsWith("m")
-                || lower.startsWith("d") || lower.startsWith("k") || lower.startsWith("qr")
-                || lower.contains("label") || lower.contains("pos") || lower.startsWith("hm")
-                || lower.startsWith("b21") || lower.startsWith("b1") || lower.startsWith("d11")
-                || lower.startsWith("d21") || lower.startsWith("d31") || lower.startsWith("hprt");
-    }
 }

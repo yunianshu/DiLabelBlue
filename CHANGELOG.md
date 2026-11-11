@@ -7,6 +7,12 @@
 
 ### 新增
 
+- **扫描列表全量显示（用户拍板）**：取消名称白名单过滤——白名单连续误杀真实打印机
+  （T200 见 #20、BMA3 见 #24）；改为全量展示所有有名字的广播设备，识别厂商置顶+徽章，
+  未知设备沉底按 RSSI 排序；仅跳过无名广播设备
+- **BMA 系列适配（真机打印成功）**：BMA3-C5D3 经降级枚举自动选中 `ff02` 写特征
+  （MTU 136），**CPCL** 指令族打印命中（条形码标签）；ESC/POS、TSPL 无反应。
+  VendorDB 新增「BMA 系列」Profile（CPCL），AUTO 对 BMA 默认发 CPCL
 - **汉印 ME35 系列适配（真机打印成功）**：ME35PLUS-5007 经 BLE `ff00/ff02` 通道用
   **TSPL** 指令族成功打出标签（文字+条码）；ESC/POS、CPCL、DLE EOT 探测均无反应。
   VendorDB 新增 ME35 专属 Profile（TSPL、ff00 候选置顶），AUTO 模式对 ME35 默认 TSPL
