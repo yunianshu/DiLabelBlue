@@ -342,10 +342,20 @@ public class BlePrinterConnection {
             log("机型识别: 无 0x180A 设备信息服务(不少白牌机不带), 指令族靠探测");
             return;
         }
+        // 先列出该服务下全部特征（含自定义 UUID）——有的白牌固件把机型挂在非标准特征下
+        StringBuilder sb = new StringBuilder("机型识别: 0x180A 特征表:");
+        for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
+            String id = shortUuid(c.getUuid());
+            sb.append(' ').append(id == null ? c.getUuid().toString() : "0x" + id)
+              .append("/0x").append(Integer.toHexString(c.getProperties()));
+        }
+        log(sb.toString());
         infoQueue.clear();
-        for (UUID u : new UUID[]{CHR_MODEL_NUMBER, CHR_MANUFACTURER, CHR_FIRMWARE_REV}) {
-            BluetoothGattCharacteristic c = s.getCharacteristic(u);
-            if (c != null) infoQueue.add(c);
+        // 通用化：不挑标准 UUID，枚举全部特征逐个读（BMA3 实测只挂 0x2A28 软件版本）
+        for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
+            if ((c.getProperties() & BluetoothGattCharacteristic.PROPERTY_READ) != 0) {
+                infoQueue.add(c);
+            }
         }
         if (infoQueue.isEmpty()) {
             log("机型识别: 0x180A 下无可读特征");
@@ -367,7 +377,9 @@ public class BlePrinterConnection {
     private void handleInfoRead(BluetoothGattCharacteristic c, int status, byte[] value) {
         String id = shortUuid(c.getUuid());
         String label = "2a24".equals(id) ? "型号" : "2a29".equals(id) ? "厂商"
-                : "2a26".equals(id) ? "固件" : (id == null ? c.getUuid().toString() : "0x" + id);
+                : "2a26".equals(id) ? "固件" : "2a28".equals(id) ? "软件版本"
+                : "2a25".equals(id) ? "序列号" : "2a23".equals(id) ? "系统ID"
+                : (id == null ? c.getUuid().toString() : "0x" + id);
         if (status == BluetoothGatt.GATT_SUCCESS && value != null && value.length > 0) {
             log("机型识别: " + label + " = " + new String(value).trim());
         } else {

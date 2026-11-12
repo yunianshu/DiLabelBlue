@@ -370,7 +370,8 @@ public class MainActivity extends Activity implements BleScanner.Callback,
         consoleScroll.setBackground(roundRect(
                 dark ? 0xFF0A0F1E : 0xFFFFFFFF, consoleStroke, dp(10)));
         logText = new TextView(this);
-        logText.setTextIsSelectable(true);
+        // 不能开 setTextIsSelectable：文本选择会吞触摸事件，日志区将无法滚动
+        logText.setTextIsSelectable(false);
         logText.setTypeface(Typeface.MONOSPACE);
         logText.setTextSize(10.5f);
         logText.setTextColor(C_SUB);
