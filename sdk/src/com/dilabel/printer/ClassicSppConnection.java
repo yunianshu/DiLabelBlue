@@ -1,4 +1,4 @@
-package com.example.bleprinter;
+package com.dilabel.printer;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;

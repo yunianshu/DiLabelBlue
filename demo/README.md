@@ -48,15 +48,21 @@ cd demo
 
 ## 架构（对应 Dlabel 四层机制）
 
+连接核心已平移为独立 SDK 模块 [`../sdk/`](../sdk/README.md)（包名 `com.dilabel.printer`），
+demo 只保留界面并在构建时连同 SDK 源码一起编译。
+
 | 文件 | 对应机制 |
 |---|---|
-| `VendorDB.java` | 名称前缀识别厂商（assets/printlist.list）+ 各厂商 GATT UUID 候选表 |
-| `BleScanner.java` | BLE 无过滤扫描 + 回调里前缀分类（ScanFilter 不支持前缀） |
-| `BlePrinterConnection.java` | GATT 连接 → 服务发现 → UUID 候选表命中/自动降级 → MTU 247 → CCCD 开通知 → 按写入回调分片流控 |
-| `ClassicSppConnection.java` | 经典蓝牙 SPP 双通道（台式机/切换模式） |
-| `UsbPrinterConnection.java` | USB (OTG) 通道：class 7 / bulk OUT 枚举 + 权限 + bulkTransfer |
-| `LabelProtocols.java` | ESC/POS、TSPL、CPCL 三族测试标签 + 探测指令 |
+| `../sdk/src/.../VendorDB.java` | 名称前缀识别厂商（assets/printlist.list）+ 各厂商 GATT UUID 候选表（含 Zebra/HP/TSC/Brother/Epson/Star/得力等调研扩充） |
+| `../sdk/src/.../BleScanner.java` | BLE 无过滤扫描 + 回调里前缀分类（ScanFilter 不支持前缀） |
+| `../sdk/src/.../BlePrinterConnection.java` | GATT 连接 → 服务发现 → UUID 候选表命中/自动降级 → MTU 247 → CCCD 开通知 → 按写入回调分片流控 |
+| `../sdk/src/.../ClassicSppConnection.java` | 经典蓝牙 SPP 双通道（台式机/切换模式） |
+| `../sdk/src/.../UsbPrinterConnection.java` | USB (OTG) 通道：class 7 / bulk OUT 枚举 + 权限 + bulkTransfer |
+| `../sdk/src/.../TcpPrinterConnection.java` | WiFi/TCP RAW 9100 通道（台式机通用，纯 Java） |
+| `../sdk/src/.../PrinterClient.java` | 四通道统一门面 |
+| `../sdk/src/.../LabelProtocols.java` | ESC/POS、TSPL、CPCL、ZPL 测试标签 + 探测指令 |
 | `RadarView.java` / `SignalBarsView.java` | 雷达扫描动画 / RSSI 信号条（自绘控件） |
+| `MainActivity.java` | 界面与流程编排（引用 SDK 类） |
 
 ## 关键工程要点（踩坑总结）
 

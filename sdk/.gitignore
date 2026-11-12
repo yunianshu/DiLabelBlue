@@ -1,0 +1,3 @@
+# 构建中间产物（jar 交付产物随库走，与 demo/BlePrinterDemo.apk 惯例一致）
+build/classes/
+build/test/

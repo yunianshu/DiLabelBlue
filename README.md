@@ -8,11 +8,14 @@
 
 | 目录/文件 | 内容 |
 |---|---|
-| [`demo/`](demo/) | **完整可运行的测试例子**：多厂家蓝牙打印机连接 Demo（纯 Android SDK，零第三方依赖），含已构建的 `BlePrinterDemo.apk` |
+| [`sdk/`](sdk/) | **printer-sdk：统一多平台打印机连接 SDK**（四通道 BLE/SPP/USB/TCP 9100 + 多品牌识别 + 四指令族，零依赖） |
+| [`sdk/README.md`](sdk/README.md) | SDK 的构建、API 用法与品牌覆盖表 |
+| [`demo/`](demo/) | **完整可运行的测试例子**：消费 printer-sdk 的多厂家连接 Demo（纯 Android SDK，零第三方依赖），含已构建的 `BlePrinterDemo.apk` |
 | [`demo/README.md`](demo/README.md) | Demo 的构建、使用说明与 BLE 工程踩坑要点 |
 | [分析报告](分析报告-Dlabel多厂家打印机连接技术.md) | APK 逆向分析全文：证据、机制、加固与脱壳尝试记录 |
 | [问题记录](问题记录.md) | 全流程踩坑与解决方案、遗留问题清单（K1-K3） |
 | [各平台连接方式调研](各平台连接方式调研.md) | iOS/Windows/Web/小程序/鸿蒙等各平台连接打印机的方式与坑 |
+| [主流打印机SDK连接方式调研](主流打印机SDK连接方式调研.md) | Zebra/Honeywell/TSC/Brother/Epson/Star/HP/佳博/汉印/芯烨/精臣/得力 12 品牌 SDK 连接方式深挖 |
 | [CHANGELOG](CHANGELOG.md) | 版本更新日志 |
 | `scripts/` | 360 加固 dex 字节级补丁脚本（脱壳实验方法留档） |
 | `decompiled/`、`apk_extracted/`、`unpack_attempt/`、`tools/` | 本地逆向产物与工具（体积大，未入库，按报告流程可重新生成） |
@@ -27,7 +30,10 @@
 ## 快速开始
 
 ```bash
-# 构建（无需 Gradle / Android Studio）
+# 构建 SDK（产物 sdk/build/printer-sdk.jar，附纯 JVM 冒烟测试）
+cd sdk && ./build_sdk.sh
+
+# 构建 Demo（无需 Gradle / Android Studio，自动连同 ../sdk 源码一起编译）
 cd demo && ./build_apk.sh        # 产物 demo/BlePrinterDemo.apk
 
 # 安装到手机（Android 5.0+，需真机蓝牙）

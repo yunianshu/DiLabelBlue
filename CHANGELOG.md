@@ -7,6 +7,34 @@
 
 ### 新增
 
+- **printer-sdk 统一多平台打印机连接 SDK**：demo 的 6 个连接核心类（VendorDB /
+  LabelProtocols / BleScanner / BlePrinterConnection / ClassicSppConnection /
+  UsbPrinterConnection）平移为 `sdk/` 模块（包名 `com.dilabel.printer`），demo 只保留
+  界面（MainActivity/RadarView/SignalBarsView）并改为引用 SDK——单一事实来源，
+  demo build_apk.sh 自动连同 `../sdk/src` 编译。真机回归：安装启动无崩溃、扫描 12 台、
+  HM-T300 PRO 正确识别「汉印 HPRT」（见 sdk/README.md 已验证范围）
+- **主流打印机品牌 SDK 连接方式调研**：Zebra/Honeywell/TSC/Brother/Epson/Star/HP/佳博/
+  汉印/芯烨/精臣/得力 12 品牌的 SDK 获取渠道、连接方式（BLE UUID/SPP/TCP 端口）、指令族、
+  平台支持与第三方直连可行性分级（见 主流打印机SDK连接方式调研.md）
+- **TCP 9100 通道（TcpPrinterConnection）**：调研确认 Zebra/Epson/Star/TSC/佳博/汉印/
+  芯烨/得力台式机通用 RAW 9100 端口；一条 TCP 连接直写指令字节，无分片/流控负担，
+  纯 Java 实现（服务器端可直接用）；JVM 冒烟含 loopback 全双工实测
+- **统一门面 PrinterClient**：BLE/SPP/USB/TCP 四通道一个入口（connectBle/connectSpp/
+  connectUsb/connectTcp → sendData/disconnect），统一状态码与回调
+- **VendorDB 品牌表扩充（按调研）**：新增斑马 Zebra（官方 BLE Parser 服务
+  `38eb4a80/38eb4a82/38eb4a81`，唯一官方文档化 GATT，协议 ZPL）、TSC（TSPL）、
+  霍尼韦尔 Honeywell、爱普生 Epson（ESC_POS）、Star Micronics、Brother、得力 Deli 7 个
+  品牌 Profile；补 18F0/2AF1/2AF0 通用打印服务、FFE2 写特征（HM-10 类模块）、
+  49535343 通知变体（XP-58IIH 实测）；精臣 NIIMBOT 指令族改标 UNKNOWN
+  （调研证实为私有二进制协议，防 AUTO 盲发标准指令）。真机验证过的旧 Profile 未动
+- **SDK JVM 冒烟测试**（sdk/test/JvmSmokeTest.java）：32 项断言全通过——品牌前缀识别
+  （含 #24 随机名误报回归）、四指令族字节构建、探测指令、TCP loopback 收发
+
+### 变更
+
+- demo 构建：SDK 路径默认值修正为 `D:/androidsdk`（本机实际 SDK 位置），并连同
+  `../sdk/src` 一起编译；USB 权限 action 更名 `com.dilabel.printer.USB_PERMISSION`
+
 - **0x180A 读取通用化**：枚举设备信息服务下全部可读特征逐个读（不再只挑型号/厂商/固件
   三个标准特征），全特征表入日志，标签映射补软件版本/序列号/系统ID——BMA3 只挂
   0x2A28 一个特征即由此读到（软件版本 01.1，问题记录 #26）

@@ -1,4 +1,4 @@
-package com.example.bleprinter;
+package com.dilabel.printer;
 
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -36,7 +36,7 @@ public class UsbPrinterConnection {
     }
 
     public static final String ACTION_USB_PERMISSION =
-            "com.example.bleprinter.USB_PERMISSION";
+            "com.dilabel.printer.USB_PERMISSION";
 
     private final Context context;
     private final Listener listener;

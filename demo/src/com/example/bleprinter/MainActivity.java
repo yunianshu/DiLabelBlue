@@ -1,5 +1,12 @@
 package com.example.bleprinter;
 
+import com.dilabel.printer.BlePrinterConnection;
+import com.dilabel.printer.BleScanner;
+import com.dilabel.printer.ClassicSppConnection;
+import com.dilabel.printer.LabelProtocols;
+import com.dilabel.printer.UsbPrinterConnection;
+import com.dilabel.printer.VendorDB;
+
 import android.Manifest;
 import android.animation.ValueAnimator;
 import android.app.AlertDialog;

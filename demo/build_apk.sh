@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 
-SDK=${ANDROID_SDK_ROOT:-D:/soft/android-sdk}
+SDK=${ANDROID_SDK_ROOT:-D:/androidsdk}
 BT="$SDK/build-tools/36.0.0"
 PLATFORM="$SDK/platforms/android-35/android.jar"
 KEYSTORE="../debug.keystore"   # 测试签名密钥（首次构建自动生成，不入库）
@@ -25,12 +25,13 @@ echo "[2/6] aapt2 链接生成资源包 + R.java"
     --manifest AndroidManifest.xml -A assets \
     --java build/gen build/res.zip
 
-echo "[3/6] javac 编译"
+echo "[3/6] javac 编译（demo 界面 + printer-sdk 源码）"
 javac -encoding UTF-8 -source 1.8 -target 1.8 \
     -bootclasspath "$PLATFORM" \
     -d build/classes \
     build/gen/com/example/bleprinter/R.java \
-    src/com/example/bleprinter/*.java
+    src/com/example/bleprinter/*.java \
+    ../sdk/src/com/dilabel/printer/*.java
 
 echo "[4/6] d8 转 dex"
 "$BT/d8.bat" --lib "$PLATFORM" --release --output build \

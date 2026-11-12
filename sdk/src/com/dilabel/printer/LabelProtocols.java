@@ -1,4 +1,4 @@
-package com.example.bleprinter;
+package com.dilabel.printer;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
